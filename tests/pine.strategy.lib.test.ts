@@ -1,12 +1,12 @@
 /**
  * Kütüphane stratejileri bağımsız bir simülasyonla karşılaştırılır: sinyaller referansla doğrulanmış indikatör
- * çıktılarından (UT Bot Al/Sat, EMA/ATR) alınır, emir/işlem hesabı testte ayrıca yazılmıştır.
+ * çıktılarından (UT Bot Al/Sat, EMA/ATR) ya da ham mumlardan alınır, emir/işlem hesabı testte ayrıca yazılmıştır.
  */
 import { describe, expect, it } from "vitest";
 import { run } from "../src/pine";
 import { LIBRARY } from "../src/pine/library";
 import type { BarsData, PineOutput, RunResult, StrategyOut } from "../src/pine/types";
-import { randomBars, resample } from "./helpers";
+import { randomBars, resample, runWithData } from "./helpers";
 
 function ok(r: RunResult): PineOutput {
   if (!r.ok) throw new Error(JSON.stringify("error" in r ? r.error : r.needData));
@@ -163,5 +163,103 @@ describe("EMA Trend 4s Strateji (bot sistemi)", () => {
     const entries = (s: StrategyOut) => [...s.trades, ...s.openTrades].map((t) => [t.entryTime, +t.entryPrice.toFixed(9), t.dir]);
     expect(entries(on4).length).toBeGreaterThan(5);
     expect(entries(on1)).toEqual(entries(on4));
+  });
+});
+
+describe("Trend Avcısı Strateji (15 dk)", () => {
+  const B = randomBars(6000, 21, 900, Date.UTC(2025, 0, 1));
+  // kısa kanal ve kısa günlük EMA: test verisinde (≈ 62 gün) yeterince işlem olsun
+  const small = { "Trend EMA": 5, "Kanal uzunluğu (mum)": 48 };
+  const tight = { ...small, "Zarar kes (ATR katı)": 1.5, "İz süren stop (ATR katı)": 2, "En uzun süre (mum, 0 = sınırsız)": 30 };
+
+  /** Bağımsız hesap: kanal ham mumlardan, günlük EMA ve 1s ATR yardımcı göstergeden; tek pozisyon, sonraki açılışta
+   * giriş, zarar kes giriş ∓ slK×ATR, mum kapanışında en iyi fiyattan trK×ATR geride iz süren stop (sonraki mumdan),
+   * stop açılışta aşılmışsa açılıştan, süre sınırında sonraki açılışta kapanış. */
+  function simulate(p: { trendLen: number; ch: number; slK: number; trK: number; maxBars: number }): Sim {
+    const aux = ok(
+      runWithData(
+        `//@version=5\nindicator("y")\nplot(request.security(syminfo.tickerid, "D", ta.ema(close, ${p.trendLen}), lookahead = barmerge.lookahead_off))\nplot(request.security(syminfo.tickerid, "60", ta.atr(14), lookahead = barmerge.lookahead_off))`,
+        B,
+      ),
+    );
+    const [ema, atr] = aux.plots.map((x) => x.values);
+    const sim = new Sim(B);
+    let pending: { dir: number; qty: number } | null = null;
+    let closeNext = false;
+    let atrE = Number.NaN;
+    let stp = Number.NaN;
+    let best = Number.NaN;
+    let eb = -1;
+    for (let i = 0; i < B.time.length; i++) {
+      const [o, h, l, c] = [B.open[i]!, B.high[i]!, B.low[i]!, B.close[i]!];
+      if (closeNext && sim.trade) sim.close(i, o);
+      closeNext = false;
+      if (pending) {
+        sim.open(i, pending.dir, pending.qty, o);
+        stp = o - pending.dir * p.slK * atrE;
+        best = Number.NaN;
+        eb = i;
+        pending = null;
+      }
+      const t = sim.trade;
+      if (t && (t.dir > 0 ? l <= stp : h >= stp)) sim.close(i, (t.dir > 0 ? o <= stp : o >= stp) ? o : stp);
+      if (sim.trade) {
+        const d = sim.trade.dir;
+        best = Number.isNaN(best) ? (d > 0 ? h : l) : d > 0 ? Math.max(best, h) : Math.min(best, l);
+        stp = d > 0 ? Math.max(stp, best - p.trK * atrE) : Math.min(stp, best + p.trK * atrE);
+        if (p.maxBars > 0 && i - eb + 1 >= p.maxBars) closeNext = true;
+      } else if (i >= p.ch && !Number.isNaN(ema![i]!) && !Number.isNaN(atr![i]!)) {
+        let hh = -Infinity;
+        let ll = Infinity;
+        for (let k = i - p.ch; k < i; k++) {
+          hh = Math.max(hh, B.high[k]!);
+          ll = Math.min(ll, B.low[k]!);
+        }
+        const dir = c > hh && c > ema![i]! ? 1 : c < ll && c < ema![i]! ? -1 : 0;
+        if (dir) {
+          pending = { dir, qty: sim.qtyAt(i) };
+          atrE = atr![i]!;
+        }
+      }
+    }
+    return sim;
+  }
+
+  it("işlemler bağımsız hesapla birebir (varsayılan çıkışlar)", () => {
+    const s = ok(runWithData(code("trend_avcisi_strategy"), B, { inputs: small })).strategy!;
+    const sim = simulate({ trendLen: 5, ch: 48, slK: 3, trK: 5, maxBars: 960 });
+    expect(sim.closed.length).toBeGreaterThan(10);
+    expectSame(s, sim);
+    expect(s.openTrades).toHaveLength(sim.trade ? 1 : 0);
+    expect(s.props).toMatchObject({ initialCapital: 1000, qtyType: "percent_of_equity", qtyValue: 100, commissionValue: 0.05 });
+  });
+
+  it("dar stop, sıkı iz, süre sınırı: stop, iz ve süre çıkışları birebir", () => {
+    const s = ok(runWithData(code("trend_avcisi_strategy"), B, { inputs: tight })).strategy!;
+    const sim = simulate({ trendLen: 5, ch: 48, slK: 1.5, trK: 2, maxBars: 30 });
+    expectSame(s, sim);
+    expect(new Set(s.trades.map((t) => t.exitComment))).toEqual(new Set(["Stop", "Süre"]));
+    expect(s.trades.some((t) => t.exitComment === "Stop" && t.profit > 0)).toBe(true); // iz süren stop kârda kapattı
+    expect(s.long.trades).toBeGreaterThan(0);
+    expect(s.short.trades).toBeGreaterThan(0);
+  });
+
+  it("gösterge stratejinin işlemlerini birebir izler (Al/Sat girişte, Çık çıkışta)", () => {
+    for (const inputs of [small, tight]) {
+      const s = ok(runWithData(code("trend_avcisi_strategy"), B, { inputs })).strategy!;
+      const ind = ok(runWithData(code("trend_avcisi"), B, { inputs }));
+      const bars = (title: string) => ind.shapes.find((x) => x.title === title)!.events.map((e) => e.bar);
+      const all = [...s.trades, ...s.openTrades];
+      expect(bars("Al")).toEqual(all.filter((t) => t.dir > 0).map((t) => t.entryBar));
+      expect(bars("Sat")).toEqual(all.filter((t) => t.dir < 0).map((t) => t.entryBar));
+      expect(bars("Çık")).toEqual(s.trades.map((t) => t.exitBar));
+    }
+  });
+
+  it("50.000 mumda (15 dk'da uygulamanın üst sınırı) işlem bütçesi küçük", () => {
+    const big = randomBars(50000, 3, 900);
+    const out = ok(runWithData(code("trend_avcisi_strategy"), big));
+    expect(out.strategy!.trades.length).toBeGreaterThan(20);
+    expect(out.stats.ops).toBeLessThan(10_000_000);
   });
 });

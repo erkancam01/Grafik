@@ -4,7 +4,7 @@ import type { Spec } from "../sweep";
 
 export default {
   name: "p2_val",
-  script: "src/pine/library/ut_bot_pro_strategy.pine",
+  script: "tools/backtest/pine/ut_bot_pro_strategy.pine",
   coins: DEV_COINS,
   window: "val",
   tf: 900,

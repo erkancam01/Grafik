@@ -24,8 +24,8 @@ yeterli (ör. **UT Bot Alerts**). `strategy()` betikleri **Strateji Test Aracı*
 
 ## Strateji testi (backtest)
 
-- Kütüphaneden **UT Bot Strateji** ya da **EMA Trend 4s Strateji (bot sistemi)** ekle, veya TradingView'daki bir
-  stratejinin kodunu yapıştır. Grafiğin altında özet şeridi çıkar (net kâr %, işlem sayısı, kârlı oran, düşüş).
+- Kütüphaneden **UT Bot Strateji**, **EMA Trend 4s Strateji (bot sistemi)** ya da **Trend Avcısı Strateji (15 dk)**
+  ekle, veya TradingView'daki bir stratejinin kodunu yapıştır. Grafiğin altında özet şeridi çıkar (net kâr %, işlem sayısı, kârlı oran, düşüş).
 - Şeride dokun → **Strateji Test Aracı**: *Özet* (net kâr, kâr faktörü, maks. düşüş, al-ve-tut karşılaştırması,
   özsermaye eğrisi, Tümü/Long/Short tablosu) ve *İşlemler* (her işlem; dokununca grafikte o işleme gider).
   Emirler grafikte ok olarak görünür.
@@ -41,6 +41,36 @@ yeterli (ör. **UT Bot Alerts**). `strategy()` betikleri **Strateji Test Aracı*
   stop/limit emirleri mum içinde (açılış → yüksek/düşük → kapanış varsayımı, boşlukta açılıştan). Teminat,
   likidasyon ve fonlama ücreti hesaba katılmaz. `?demo` verisi yapay (düzgün dalgalar) olduğundan oradaki
   strateji sonuçları anlamsızdır; gerçek sonuç için Binance verisiyle kullan.
+
+## Trend Avcısı (15 dk) — gerçek veriyle araştırılarak bulunan strateji
+
+Kütüphanede gösterge (**Trend Avcısı**: Al/Sat/Çık etiketleri, iz süren stop çizgisi, alarmlar) ve backtest sürümü
+(**Trend Avcısı Strateji**) olarak var; ikisi aynı işlemleri verir (testte denetlenir). Grafik **15 dk** olmalı.
+
+- **Kural:** fiyat günlük EMA50'nin üstündeyken kapanış son 192 mumun (2 gün) en yükseğini aşarsa long, altındayken en
+  düşüğünün altına inerse short; sonraki mumun açılışında giriş. Zarar kes giriş ∓ 3 × 1 saatlik ATR; kâr al yok,
+  iz süren stop işlemde görülen en iyi fiyatın 5 × ATR gerisinde (mum kapanışında güncellenir); en çok 10 gün.
+- **Kazanma oranı düşüktür (~%33-37):** çok sayıda küçük zarar, az sayıda büyük trend kazancı.
+- **Sonuçlar** (Binance vadeli, komisyon %0,05/taraf, işlem başına getiri komisyon sonrası; sermayenin %100'ü):
+
+| Veri | İşlem | Kazanma | İşlem başına | Kâr faktörü |
+|---|---|---|---|---|
+| Geliştirme: 2025-04 → 2026-06, 8 coin | 920 | %36,7 | +%0,29 | 1,18 |
+| **Son sınav** (hiç bakılmamış): 2026-07 → 2026-09, BTC/ETH/SOL/XRP/BNB/DOGE | 160 | %33,1 | +%0,04 | 1,03 |
+| **Görülmemiş coinler** (hiç kullanılmamış): XRP/BNB/DOGE, 2024-09 → 2026-09 | 559 | %36,7 | +%0,60 | 1,37 |
+| Karşılaştırma: orijinal UT Bot Strateji, son sınav dönemi, 15 dk | 6302 | %28,4 | −%0,11 | 0,65 |
+
+  Görülmemiş coinlerde gerçek fonlama ücretleriyle +%0,59/işlem; son sınav dönemi fiilen başa baş (%0,065 komisyonda
+  PF 1,00). Uygulamada örnek: DOGE 2025-05-01 → 2026-09-29 net +%60,4 (al-ve-tut −%45,8), **maks. düşüş %39**;
+  BTC son sınav dönemi −%3,4 (al-ve-tut +%42,4). Yatay dönemlerde küçük zararlarla beklenir; özsermayenin %100'ü ile
+  düşüş büyüktür, daha küçük emir büyüklüğü kullan. Geçmiş sonuç gelecek garantisi değildir.
+- **Neden %70 kazanma değil:** 5 dk ve 15 dk'da UT Bot sinyallerinin ve denenen 12 ek özelliğin (hacim, alıcı baskısı,
+  fonlama, saat, oynaklık…) rastgele girişe göre tutarlı üstünlüğü yok; %70 kazanma yalnız kâr al küçük / zarar kes
+  büyük seçilerek elde ediliyor ve komisyon kadar zarar ettiriyor. 15 dk'da geliştirmede %75 kazanan bir kural
+  (UT trendi yönünde güçlü mum) sonraki 3 ayda %63'e düştü. 8 strateji ailesinden tutarlı kâr eden tek aile trend
+  takibi çıktı.
+- **Yöntem ve yeniden üretim:** `tools/backtest/` (aşağıda). Veri ayrımı ve kabul ölçütleri sonuçlardan önce
+  `tools/backtest/protocol.ts`'te sabitlendi, her değişiklik orada kayıtlı; son sınav bir kez açıldı.
 
 ## Veri
 
@@ -90,6 +120,20 @@ npm run dev          # http://localhost:5173  (demo: /?demo)
 npm test             # yorumlayıcı + veri testleri (vitest)
 npm run e2e          # tarayıcı testleri (Playwright)
 npm run build        # dist/ (statik site)
+```
+
+Strateji araştırması (`tools/backtest/`; uygulamanın kendi Pine motoru Node'da, sonuçlar Strateji Test Aracı'yla aynı):
+
+```bash
+# veri: bot deposunun market-data dalı (data.binance.vision'dan GitHub Actions ile indirilen 1 dk mumlar)
+git -C ../bot fetch --depth 1 origin market-data && mkdir -p .cache/market-data
+git -C ../bot archive origin/market-data | tar -x -C .cache/market-data
+npm run bt:import                                   # → .cache/bars (1m/5m ikili; pandas + pyarrow gerekir)
+python3 tools/backtest/analyze.py --tf 15m          # piyasa davranışı analizi (olay sonrası, önce hangisi, saatler)
+python3 tools/backtest/strategy_lab.py              # 15 dk strateji laboratuvarı (8 aile, temkinli dolum)
+npm run bt:sweep -- tools/backtest/specs/t1_dev2.ts # motorla tarama/doğrulama (4 işçi)
+npm run bt:final                                    # son sınav (frozen.json; her çalıştırma bakış kaydına yazılır)
+BT_REAL=1 npx playwright test e2e/real.spec.ts      # uygulamada gerçek veriyle aynı sonuç + ekran görüntüsü
 ```
 
 Yapı: `src/pine/` (lexer → parser → derleyici → yürütme, `strategy.ts` emir/işlem motoru, `builtins/`, `library/`),

@@ -1,0 +1,81 @@
+//@version=5
+// Trend Avcısı (15 dk) — günlük trend yönünde kanal kırılımı sinyalleri ve iz süren stop.
+// Aynı kurallarla backtest: "Trend Avcısı Strateji (15 dk)". Bu gösterge stratejinin işlemlerini birebir izler:
+// sinyal mumu kapanınca sonraki mumun açılışında giriş ("Al" / "Sat"), zarar kes giriş ∓ 3 × 1 saatlik ATR, sonra
+// en iyi fiyatın 5 × ATR gerisinde iz süren stop (mum kapanışında güncellenir), stop dokununca "Çık", en çok 10 gün.
+// Pozisyon varken yeni sinyal verilmez. Kazanma oranı düşüktür (~%35-40): kâr, az sayıda büyük trendden gelir.
+indicator("Trend Avcısı (15 dk)", shorttitle = "Trend Avcısı", overlay = true)
+
+trendTf  = input.timeframe("D", "Trend zaman dilimi", group = "Trend")
+trendLen = input.int(50, "Trend EMA", minval = 1, group = "Trend")
+chLen    = input.int(192, "Kanal uzunluğu (mum)", minval = 2, group = "Giriş", tooltip = "15 dk grafikte 192 mum = 2 gün")
+yon      = input.string("Her ikisi", "İşlem yönü", options = ["Her ikisi", "Yalnız long", "Yalnız short"], group = "Giriş")
+atrTf    = input.timeframe("60", "ATR zaman dilimi", group = "Çıkış")
+slK      = input.float(3, "Zarar kes (ATR katı)", minval = 0.1, step = 0.25, group = "Çıkış")
+trK      = input.float(5, "İz süren stop (ATR katı)", minval = 0.1, step = 0.25, group = "Çıkış")
+maxBars  = input.int(960, "En uzun süre (mum, 0 = sınırsız)", minval = 0, group = "Çıkış", tooltip = "15 dk grafikte 960 mum = 10 gün")
+
+emaT = request.security(syminfo.tickerid, trendTf, ta.ema(close, trendLen), lookahead = barmerge.lookahead_off)
+atrH = request.security(syminfo.tickerid, atrTf, ta.atr(14), lookahead = barmerge.lookahead_off)
+hh   = ta.highest(high, chLen)[1]
+ll   = ta.lowest(low, chLen)[1]
+ready = not na(atrH) and not na(emaT) and not na(hh)
+
+// Durum makinesi (stratejideki dolum kurallarıyla aynı): 0 boş, ±1 pozisyon; bekleyen giriş sonraki açılışta dolar
+var int   pos     = 0
+var int   pend    = 0
+var float atrE    = na
+var float entry   = na
+var float stp     = na
+var float best    = na
+var int   entryBar = na
+enterL = false
+enterS = false
+exitNow = false
+
+// 1) Mum başı: bekleyen giriş açılışta dolar; bekleyen süre çıkışı açılışta kapanır
+var bool pendClose = false
+if pendClose and pos != 0
+    exitNow := true
+    pos := 0
+pendClose := false
+if pend != 0
+    pos := pend
+    entry := open
+    entryBar := bar_index
+    stp := pend > 0 ? entry - slK * atrE : entry + slK * atrE
+    best := na
+    enterL := pend > 0
+    enterS := pend < 0
+    pend := 0
+
+// 2) Mum içinde stop (stratejide açılışta aşılmışsa açılıştan, değilse stop seviyesinden dolar)
+if pos > 0 and low <= stp
+    exitNow := true
+    pos := 0
+else if pos < 0 and high >= stp
+    exitNow := true
+    pos := 0
+
+// 3) Mum kapanışı: iz süren stop, süre sınırı, yeni sinyal
+if pos != 0
+    best := na(best) ? (pos > 0 ? high : low) : (pos > 0 ? math.max(best, high) : math.min(best, low))
+    stp := pos > 0 ? math.max(stp, best - trK * atrE) : math.min(stp, best + trK * atrE)
+    if maxBars > 0 and bar_index - entryBar + 1 >= maxBars
+        pendClose := true
+goLong  = pos == 0 and ready and close > hh and close > emaT and yon != "Yalnız short"
+goShort = pos == 0 and ready and close < ll and close < emaT and yon != "Yalnız long"
+if goLong or goShort
+    pend := goLong ? 1 : -1
+    atrE := atrH
+
+plot(hh, "Kanal üst", color = color.new(color.gray, 50))
+plot(ll, "Kanal alt", color = color.new(color.gray, 50))
+plot(emaT, "Trend EMA (günlük)", color = color.orange, linewidth = 2)
+plot(pos != 0 ? stp : na, "İz süren stop", color = color.red, style = plot.style_linebr)
+plotshape(enterL, "Al", shape.labelup, location.belowbar, color.green, text = "Al", textcolor = color.white, size = size.tiny)
+plotshape(enterS, "Sat", shape.labeldown, location.abovebar, color.red, text = "Sat", textcolor = color.white, size = size.tiny)
+plotshape(exitNow, "Çık", shape.xcross, location.abovebar, color.gray, text = "Çık", textcolor = color.gray, size = size.tiny)
+alertcondition(goLong, "Trend Avcısı Long", "Trend Avcısı: long sinyali (sonraki mumda giriş)")
+alertcondition(goShort, "Trend Avcısı Short", "Trend Avcısı: short sinyali (sonraki mumda giriş)")
+alertcondition(exitNow, "Trend Avcısı Çıkış", "Trend Avcısı: iz süren stop / süre çıkışı")

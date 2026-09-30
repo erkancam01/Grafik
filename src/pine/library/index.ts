@@ -6,6 +6,8 @@ import emaTrendStrategy from "./ema_trend_4h_strategy.pine?raw";
 import macd from "./macd.pine?raw";
 import rsi from "./rsi.pine?raw";
 import supertrend from "./supertrend.pine?raw";
+import trendAvcisi from "./trend_avcisi.pine?raw";
+import trendAvcisiStrategy from "./trend_avcisi_strategy.pine?raw";
 import utBot from "./ut_bot.pine?raw";
 import utBotStrategy from "./ut_bot_strategy.pine?raw";
 
@@ -21,8 +23,10 @@ export interface LibraryItem {
 export const LIBRARY: LibraryItem[] = [
   { id: "ut_bot", name: "UT Bot Alerts", description: "ATR iz süren stop; Al/Sat etiketleri, mum renkleri, alarmlar", code: utBot },
   { id: "ema_trend_4h", name: "EMA Trend 4s (bot sistemi)", description: "Botun seçilen sistemi: 4s EMA20/EMA100, stop ve boyut", code: emaTrend },
+  { id: "trend_avcisi", name: "Trend Avcısı (15 dk)", description: "Günlük trend yönünde 2 günlük kanal kırılımı, iz süren stop; Al/Sat/Çık ve alarmlar", code: trendAvcisi },
   { id: "ut_bot_strategy", name: "UT Bot Strateji", description: "Backtest: Al'da long, Sat'ta short; kâr, işlem listesi, düşüş", code: utBotStrategy, strategy: true },
   { id: "ema_trend_4h_strategy", name: "EMA Trend 4s Strateji (bot sistemi)", description: "Backtest: botun sistemi, 3×ATR stop ile", code: emaTrendStrategy, strategy: true },
+  { id: "trend_avcisi_strategy", name: "Trend Avcısı Strateji (15 dk)", description: "Backtest: 15 dk'da en tutarlı bulunan sistem; kazanma ~%35, kâr büyük trendlerden", code: trendAvcisiStrategy, strategy: true },
   { id: "supertrend", name: "Supertrend", description: "ATR tabanlı trend çizgisi ve dönüş sinyalleri", code: supertrend },
   { id: "ema_ribbon", name: "EMA 20/50/200", description: "Üç üssel hareketli ortalama", code: emaRibbon },
   { id: "bollinger", name: "Bollinger Bantları", description: "SMA ± standart sapma bantları", code: bollinger },

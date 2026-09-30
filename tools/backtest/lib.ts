@@ -70,6 +70,11 @@ export interface Job {
   warmupDays?: number;
   /** Grafik zaman dilimi, saniye (varsayılan 300 = 5 dk; 900 = 15 dk, 5 dk mumlardan üretilir). */
   tf?: number;
+  /**
+   * Uygulamadaki gibi yükleme (src/App.tsx, src/indicators/compute.ts): grafik = son max(5000, test başı + 300)
+   * mum; üst zaman dilimi = grafiğin kapsadığı süre + 400 mum. `now` = uygulamanın saati (ms).
+   */
+  appLike?: { now: number };
 }
 
 export interface JobResult {
@@ -118,12 +123,33 @@ export class Runner {
     return x;
   }
 
+  /** Uygulamadaki gibi: grafiğin süresi + 400 üst zaman dilimi mumu, en yeni mumla biten. */
+  private extraAppLike(chart: BarsData, q: DataRequest): BarsData {
+    const n = chart.time.length;
+    const span = chart.time[n - 1]! - chart.time[0]! + chart.tfSec * 1000;
+    const want = Math.min(50_000, Math.ceil(span / (q.tfSec * 1000)) + (q.tfSec >= chart.tfSec ? 400 : 0));
+    const all = this.barsTf(q.symbol, 300);
+    const tf = q.tfSec === 300 ? all : resample(all, q.tfSec);
+    const m = tf.time.length;
+    const x = sliceTime(tf, tf.time[Math.max(0, m - want)]!, tf.time[m - 1]!);
+    return q.heikinAshi ? heikinAshi(x) : x;
+  }
+
   run(job: Job): JobResult {
     const t0 = performance.now();
     const c = this.script(job.script);
-    const from = job.from - (job.warmupDays ?? WARMUP_DAYS) * DAY;
-    const to = job.to + DAY; // aralıktan sonra en az bir mum: açık pozisyon "Dönem sonu" ile kapanır
-    const b = sliceTime(this.barsTf(job.symbol, job.tf ?? 300), from, to);
+    const tfSec = job.tf ?? 300;
+    let from = job.from - (job.warmupDays ?? WARMUP_DAYS) * DAY;
+    let to = job.to + DAY; // aralıktan sonra en az bir mum: açık pozisyon "Dönem sonu" ile kapanır
+    let b = sliceTime(this.barsTf(job.symbol, tfSec), from, to);
+    if (job.appLike) {
+      const all = this.barsTf(job.symbol, tfSec);
+      const want = Math.min(50_000, Math.max(5000, Math.ceil((job.appLike.now - job.from) / (tfSec * 1000)) + 300));
+      const n = all.time.length;
+      b = sliceTime(all, all.time[Math.max(0, n - want)]!, all.time[n - 1]!);
+      from = b.time[0]!;
+      to = b.time[b.time.length - 1]!;
+    }
     const inputs: Record<string, unknown> = {
       ...job.inputs,
       "__s.comm_type": "percent",
@@ -137,7 +163,7 @@ export class Runner {
       if (r.ok) return { ...collect(r.output, b, inputs), bars: b.time.length, ms: performance.now() - t0 };
       if ("error" in r) throw new Error(`${job.symbol}: satır ${r.error.line}: ${r.error.message}`);
       if (q0(r.needData)) throw new Error(`${job.symbol}: veri isteği çözülemedi`);
-      for (const q of r.needData) extra[dataKey(q)] = this.extraFor(from, to, q);
+      for (const q of r.needData) extra[dataKey(q)] = job.appLike ? this.extraAppLike(b, q) : this.extraFor(from, to, q);
     }
     throw new Error(`${job.symbol}: request.security 5 turda çözülemedi`);
   }
