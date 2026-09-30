@@ -1,0 +1,13 @@
+//@version=5
+indicator("MACD", overlay = false)
+fast = input.int(12, "Hızlı uzunluk", minval = 1)
+slow = input.int(26, "Yavaş uzunluk", minval = 1)
+sig  = input.int(9, "Sinyal uzunluğu", minval = 1)
+src  = input.source(close, "Kaynak")
+[m, s, h] = ta.macd(src, fast, slow, sig)
+plot(h, "Histogram", color = h >= 0 ? (h > nz(h[1]) ? #26A69A : #B2DFDB) : (h < nz(h[1]) ? #FF5252 : #FFCDD2), style = plot.style_columns)
+plot(m, "MACD", color = #2962FF)
+plot(s, "Sinyal", color = #FF6D00)
+hline(0, "Sıfır", color = color.new(color.gray, 50), linestyle = hline.style_solid)
+alertcondition(ta.crossover(m, s), "MACD yukarı kesişim", "MACD sinyali yukarı kesti")
+alertcondition(ta.crossunder(m, s), "MACD aşağı kesişim", "MACD sinyali aşağı kesti")

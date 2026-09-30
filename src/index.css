@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #131722;
+  --panel: #1e222d;
+  --panel-2: #2a2e39;
+  --line: #2a2e39;
+  --fg: #d1d4dc;
+  --muted: #9598a1;
+  --subtle: #6a6d78;
+  --accent: #2962ff;
+  --up: #26a69a;
+  --down: #ef5350;
+  --warn: #f7a600;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #ffffff;
+  --panel: #f8f9fd;
+  --panel-2: #eef0f6;
+  --line: #e0e3eb;
+  --fg: #131722;
+  --muted: #5d606b;
+  --subtle: #9598a1;
+  --accent: #2962ff;
+  --up: #089981;
+  --down: #f23645;
+  --warn: #e65100;
+  color-scheme: light;
+}
+
+@theme {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-warn: var(--warn);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+button {
+  cursor: pointer;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  height: 2rem;
+  padding: 0 0.7rem;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--fg);
+  background: transparent;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.btn:hover {
+  background: var(--panel-2);
+}
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: #1e53e5;
+}
+.btn-outline {
+  border-color: var(--line);
+}
+.btn-icon {
+  width: 2rem;
+  padding: 0;
+}
+.pill {
+  height: 1.8rem;
+  padding: 0 0.55rem;
+  border-radius: 5px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.pill[aria-pressed="true"] {
+  color: var(--fg);
+  background: var(--panel-2);
+}
+.input {
+  height: 2.1rem;
+  width: 100%;
+  padding: 0 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 14px;
+}
+.input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.scroll-x {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.scroll-x::-webkit-scrollbar {
+  display: none;
+}
+.code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 20px;
+  tab-size: 4;
+}

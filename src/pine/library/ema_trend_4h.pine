@@ -1,0 +1,91 @@
+//@version=6
+// EMA Trend 4s (20/100) — botun araştırmada seçilen sistemi (research/SELECTION.md)
+// Kural: 4 saatlik KAPANMIŞ mumda EMA20 > EMA100 → LONG, EMA20 < EMA100 → SHORT.
+// Giriş: sinyal değiştikten sonraki ilk mumun açılışında. Çıkış: ters sinyal (ters yöne geçilir)
+// veya koruyucu stop (giriş ± 3 × ATR14, 4s). Stop yiyen işleme aynı sinyal sürerken yeniden girilmez.
+// Boyut önerisi: özkaynak × min(%100, bütçe / coinin yıllık oynaklığı) — bot 15 coinde bu kuralla çalışır.
+// Yeniden boyama (repaint) yok: yalnız kapanmış 4s mumlarının değerleri kullanılır.
+indicator("EMA Trend 4s (20/100) — bot sistemi", shorttitle = "EMA Trend 4s", overlay = true)
+
+tf        = input.timeframe("240", "Sinyal zaman dilimi")
+fastLen   = input.int(20, "Hızlı EMA", minval = 1)
+slowLen   = input.int(100, "Yavaş EMA", minval = 2)
+atrLen    = input.int(14, "ATR uzunluğu", minval = 1)
+stopMult  = input.float(3.0, "Stop (ATR katı)", minval = 0.5, step = 0.5)
+budgetPct = input.float(1.5, "Oynaklık bütçesi (%)", minval = 0.1, step = 0.1, tooltip = "Bot 15 coinde coin başına %1,5 kullanır. Tek coinde işlem yapıyorsan daha yüksek olabilir.")
+volDays   = input.int(30, "Oynaklık penceresi (gün)", minval = 5)
+coinCap   = input.float(100.0, "Coin başına en fazla boyut (% özkaynak)", minval = 1)
+equity    = input.float(10000.0, "Özkaynak (USDT)", minval = 1)
+showEma   = input.bool(true, "EMA çizgilerini göster")
+
+tfSec   = timeframe.in_seconds(tf)
+volLen  = math.max(5, math.round(volDays * 86400.0 / tfSec))
+perYear = 365.0 * 86400.0 / tfSec
+
+// Kapanmış 4s mumunun değerleri, yeni 4s mumunun başından itibaren (bakış-ileri yok)
+[fastH, slowH, atrH, volH] = request.security(syminfo.tickerid, tf, [ta.ema(close, fastLen)[1], ta.ema(close, slowLen)[1], ta.atr(atrLen)[1], ta.stdev(math.log(close / close[1]), volLen)[1]], lookahead = barmerge.lookahead_on)
+
+htfState     = fastH > slowH ? 1 : fastH < slowH ? -1 : 0
+stateChanged = htfState != nz(htfState[1], htfState)
+
+var int   pos     = 0
+var float stopLvl = na
+longEntry  = false
+shortEntry = false
+stopHit    = false
+signalExit = false
+
+// 1) Sinyal değişti → bu mumun açılışında çık / ters yöne geç / gir
+if stateChanged
+    if pos != 0 and htfState != pos
+        signalExit := true
+        pos := 0
+    if htfState != 0 and pos == 0 and not na(atrH)
+        pos        := htfState
+        stopLvl    := open - pos * stopMult * atrH
+        longEntry  := pos == 1
+        shortEntry := pos == -1
+
+// 2) Mum içinde koruyucu stop
+if pos == 1 and low <= stopLvl
+    stopHit := true
+    pos     := 0
+else if pos == -1 and high >= stopLvl
+    stopHit := true
+    pos     := 0
+
+annVol  = volH * math.sqrt(perYear)
+sizePct = annVol > 0 ? math.min(coinCap, budgetPct / annVol) : na  // % özkaynak (ör. %1,5 / 0,56 = %2,7)
+sizeUsd = na(sizePct) ? na : equity * sizePct / 100.0
+
+// Çizimler
+plot(showEma ? fastH : na, "EMA hızlı (4s)", color = color.new(color.orange, 0), linewidth = 2)
+plot(showEma ? slowH : na, "EMA yavaş (4s)", color = color.new(color.blue, 0), linewidth = 2)
+plot(pos != 0 ? stopLvl : na, "Stop", color = color.new(color.red, 0), style = plot.style_linebr, linewidth = 1)
+bgcolor(pos == 1 ? color.new(color.green, 92) : pos == -1 ? color.new(color.red, 92) : na)
+plotshape(longEntry, "AL", shape.labelup, location.belowbar, color.new(color.green, 0), text = "AL", textcolor = color.white, size = size.small)
+plotshape(shortEntry, "SAT", shape.labeldown, location.abovebar, color.new(color.red, 0), text = "SAT", textcolor = color.white, size = size.small)
+plotshape(stopHit, "STOP", shape.xcross, location.abovebar, color.new(color.maroon, 0), text = "STOP", textcolor = color.maroon, size = size.tiny)
+plotshape(signalExit and not longEntry and not shortEntry, "ÇIK", shape.circle, location.abovebar, color.new(color.gray, 0), text = "ÇIK", size = size.tiny)
+
+// Bilgi tablosu
+var table info = table.new(position.top_right, 2, 6, bgcolor = color.new(color.black, 15), border_width = 1)
+if barstate.islast
+    if timeframe.in_seconds() > tfSec
+        table.cell(info, 0, 5, "UYARI", text_color = color.yellow)
+        table.cell(info, 1, 5, "Grafiği 4 saat veya daha küçük zaman dilimine al", text_color = color.yellow)
+    table.cell(info, 0, 0, "Sinyal (4s)", text_color = color.white)
+    table.cell(info, 1, 0, htfState == 1 ? "LONG" : htfState == -1 ? "SHORT" : "-", text_color = htfState == 1 ? color.lime : htfState == -1 ? color.red : color.white)
+    table.cell(info, 0, 1, "Pozisyon", text_color = color.white)
+    table.cell(info, 1, 1, pos == 1 ? "Long açık" : pos == -1 ? "Short açık" : "Yok (yeni sinyal bekleniyor)", text_color = color.white)
+    table.cell(info, 0, 2, "Stop", text_color = color.white)
+    table.cell(info, 1, 2, pos != 0 ? str.tostring(stopLvl, format.mintick) : "-", text_color = color.white)
+    table.cell(info, 0, 3, "Yıllık oynaklık", text_color = color.white)
+    table.cell(info, 1, 3, na(annVol) ? "-" : str.tostring(annVol * 100.0, "#.#") + "%", text_color = color.white)
+    table.cell(info, 0, 4, "Önerilen boyut", text_color = color.white)
+    table.cell(info, 1, 4, na(sizePct) ? "-" : str.tostring(sizePct, "#.#") + "% ≈ " + str.tostring(sizeUsd, "#,###") + " USDT", text_color = color.white)
+
+// Alarmlar
+alertcondition(longEntry, "AL sinyali", "{{ticker}}: AL (4s EMA20 > EMA100), fiyat {{close}}")
+alertcondition(shortEntry, "SAT sinyali", "{{ticker}}: SAT (4s EMA20 < EMA100), fiyat {{close}}")
+alertcondition(stopHit, "Stop", "{{ticker}}: koruyucu stop çalıştı, fiyat {{close}}")
