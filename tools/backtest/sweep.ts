@@ -24,6 +24,8 @@ export interface Spec {
   where?: (cfg: Record<string, unknown>) => boolean;
   comm?: number;
   warmupDays?: number;
+  /** Grafik zaman dilimi, saniye (varsayılan 300). */
+  tf?: number;
 }
 
 export interface Row {
@@ -135,6 +137,7 @@ async function main(): Promise<void> {
             inputs: { ...spec.base, ...cfg },
             comm: spec.comm,
             warmupDays: spec.warmupDays,
+            tf: spec.tf,
           });
           for (const w of r.warnings) warns.add(w);
           perCoin[symbol] = r.trades;

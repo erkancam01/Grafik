@@ -47,10 +47,22 @@ export const STRESS_COMMISSION = 0.065;
 export const WARMUP_DAYS = 30;
 
 export const CRITERIA = {
-  /** Son sınav: 6 coinin toplamı. */
-  final: { pooledWinRate: 70, perCoinWinRate: 62, pooledAvgRet: 0, pooledPf: 1, pfCoins: 4, minTradesPerCoin: 80 },
+  /** Son sınav: son 3 ay × 6 coinin toplamı (coin başına ~20-30 işlem: coin sonuçları bilgi amaçlı). */
+  final: { pooledWinRate: 70, pooledAvgRet: 0, pooledPf: 1 },
+  /** Görülmemiş coinler (XRP/BNB/DOGE) × tüm veri dönemi: coin bazında da yeterli işlem var. */
+  holdout: { pooledWinRate: 70, perCoinWinRate: 65, pooledAvgRet: 0, pooledPf: 1, pfCoins: 2 },
   /** Geliştirmede aday sayılma şartı (son sınavdaki düşüşe pay). */
-  dev: { pooledWinRate: 73, perCoinWinRate: 66, minTradesPerCoin: 150 },
+  dev: { pooledWinRate: 73, perCoinWinRate: 66, minTradesPerCoin: 50 },
 };
+
+/**
+ * Değişiklik kaydı — doğrulama ve son sınav dönemlerine hiç bakılmadan önce yapıldı:
+ * 2026-09-30  Grafik 5 dk → 15 dk (kullanıcı isteği). Yöntem deneme-yanılmayla değil geliştirme verisinin
+ *             analiziyle kuruldu (analyze.py, candle_study.py): UT trendi yönünde gövdesi 3×ATR'yi aşan mum →
+ *             sonraki açılışta giriş, 1s ATR ile kâr al 1 / zarar kes 2, en çok 1 gün. İşlem sıklığı coin başına
+ *             ayda ~7-10 olduğundan son sınavdaki "coin başına ≥ 80 işlem" ve coin bazında kazanma alt sınırı
+ *             (≈25 işlemde gürültü) kaldırıldı; coin bazında alt sınır, istatistik gücü yeten görülmemiş
+ *             coinler × tüm dönem sınavına taşındı (holdout). Geliştirme aday şartı 150 → 50 işlem/coin.
+ */
 
 export const LOOKS = { val: 2, final: 1, reserveRetry: 1 };

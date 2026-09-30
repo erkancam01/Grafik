@@ -68,6 +68,8 @@ export interface Job {
   comm?: number;
   /** Test başından önce yüklenen gün (varsayılan WARMUP_DAYS; günlük trend için daha uzun). */
   warmupDays?: number;
+  /** Grafik zaman dilimi, saniye (varsayılan 300 = 5 dk; 900 = 15 dk, 5 dk mumlardan üretilir). */
+  tf?: number;
 }
 
 export interface JobResult {
@@ -88,9 +90,13 @@ export class Runner {
   private scripts = new Map<string, Compiled>();
   private extras = new Map<string, BarsData>();
 
-  private bars5m(symbol: string): BarsData {
-    let b = this.bars.get(symbol);
-    if (!b) this.bars.set(symbol, (b = loadBars(symbol, "5m")));
+  private barsTf(symbol: string, tf: number): BarsData {
+    const key = `${symbol}|${tf}`;
+    let b = this.bars.get(key);
+    if (!b) {
+      const m5 = loadBars(symbol, "5m");
+      this.bars.set(key, (b = tf === 300 ? m5 : resample(m5, tf)));
+    }
     return b;
   }
 
@@ -105,7 +111,7 @@ export class Runner {
     const key = `${from}|${to}|${dataKey(q)}`;
     let x = this.extras.get(key);
     if (!x) {
-      const base = sliceTime(this.bars5m(q.symbol), from, to);
+      const base = sliceTime(this.barsTf(q.symbol, 300), from, to);
       const tf = q.tfSec === 300 ? base : resample(base, q.tfSec);
       this.extras.set(key, (x = q.heikinAshi ? heikinAshi(tf) : tf));
     }
@@ -117,7 +123,7 @@ export class Runner {
     const c = this.script(job.script);
     const from = job.from - (job.warmupDays ?? WARMUP_DAYS) * DAY;
     const to = job.to + DAY; // aralıktan sonra en az bir mum: açık pozisyon "Dönem sonu" ile kapanır
-    const b = sliceTime(this.bars5m(job.symbol), from, to);
+    const b = sliceTime(this.barsTf(job.symbol, job.tf ?? 300), from, to);
     const inputs: Record<string, unknown> = {
       ...job.inputs,
       "__s.comm_type": "percent",

@@ -9,7 +9,7 @@ Sorular:
   B) Olay sonrası: UT Al/Sat, sert mum, RSI aşırılığı, 1 saatlik EMA'dan uzaklaşma → sonraki yol, "önce hangisi"
      olasılıkları (1 saatlik ATR cinsinden kâr al / zarar kes) ve komisyon sonrası beklenti; devam ve ters yön.
   C) Saat bazında oynaklık ve komisyonun hareketin ne kadarını yediği.
-Kullanım: python tools/backtest/analyze.py  →  .cache/results/analysis.md
+Kullanım: python tools/backtest/analyze.py [--tf 5m|15m]  →  .cache/results/analysis_<tf>.md
 Giriş sinyal mumunun kapanışından sonraki mumun açılışında (Strateji Test Aracı gibi); aynı mumda iki seviye
 birden → zarar sayılır (temkinli).
 """
@@ -17,19 +17,24 @@ birden → zarar sayılır (temkinli).
 from __future__ import annotations
 
 import math
+import sys
 from pathlib import Path
 
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
 BARS = ROOT / ".cache" / "bars"
-OUT = ROOT / ".cache" / "results" / "analysis.md"
+TF = sys.argv[sys.argv.index("--tf") + 1] if "--tf" in sys.argv else "5m"
+TF_SEC = {"5m": 300, "15m": 900}[TF]
+OUT = ROOT / ".cache" / "results" / f"analysis_{TF}.md"
 COINS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BCHUSDT", "DOTUSDT", "ETCUSDT", "TRXUSDT", "XLMUSDT"]
 IST = 3 * 3_600_000
 FROM = np.datetime64("2025-04-01T00:00:00").astype("datetime64[ms]").astype(np.int64) - IST
 TO = np.datetime64("2026-04-01T00:00:00").astype("datetime64[ms]").astype(np.int64) - IST - 1
 FEE_BPS = 10.0  # %0,05 × 2 taraf
-H_MAX = 288  # 1 gün (5 dk mum)
+H_MAX = 86400 // TF_SEC  # 1 gün
+
+FWD = {k: max(1, v // TF_SEC) for k, v in {"5dk": 300, "15dk": 900, "1s": 3600, "4s": 14400, "12s": 43200, "1g": 86400}.items() if v >= TF_SEC}
 
 lines: list[str] = []
 
@@ -42,7 +47,11 @@ def out(s: str = "") -> None:
 # ---------------------------------------------------------------- veri ve göstergeler
 def load(sym: str):
     a = np.fromfile(BARS / f"{sym}_5m.f64", dtype="<f8").reshape(6, -1)
-    return {k: a[i] for i, k in enumerate(["t", "o", "h", "l", "c", "v"])}
+    d = {k: a[i] for i, k in enumerate(["t", "o", "h", "l", "c", "v"])}
+    if TF_SEC == 300:
+        return d
+    H, _ = htf(d, TF_SEC, 300)
+    return H
 
 
 def rma(x: np.ndarray, n: int) -> np.ndarray:
@@ -83,7 +92,7 @@ def rsi(c, n=14):
     return np.where(dn == 0, 100.0, 100 - 100 / (1 + up / dn))
 
 
-def ut_bot(c, x_atr, a):
+def ut_bot(c, x_atr, a, with_trail=False):
     """UT Bot Alerts (tools/make_fixtures.py ile aynı mantık)."""
     n = len(c)
     trail = np.zeros(n)
@@ -106,18 +115,20 @@ def ut_bot(c, x_atr, a):
         sell[i] = s < t and t1 <= s1
         trail[i] = t
         prev = 0.0 if math.isnan(t) else t
-    return buy, sell
+    return (buy, sell, trail) if with_trail else (buy, sell)
 
 
-def htf(d, sec):
-    """5 dk'dan üst zaman dilimi mumları ve her 5 dk mumun kapanışında son kapanmış üst mumun indeksi."""
+def htf(d, sec, bar_sec=None):
+    """Üst zaman dilimi mumları ve her grafik mumunun kapanışında son kapanmış üst mumun indeksi."""
+    bar_sec = TF_SEC if bar_sec is None else bar_sec
     k = (d["t"] // (sec * 1000)).astype(np.int64)
     starts = np.flatnonzero(np.diff(k, prepend=k[0] - 1))
     ends = np.append(starts[1:], len(k)) - 1
     H = {"t": k[starts] * sec * 1000, "o": d["o"][starts], "c": d["c"][ends]}
     H["h"] = np.maximum.reduceat(d["h"], starts)
     H["l"] = np.minimum.reduceat(d["l"], starts)
-    idx = np.searchsorted(H["t"], d["t"] + 300_000 - sec * 1000, side="right") - 1
+    H["v"] = np.add.reduceat(d["v"], starts)
+    idx = np.searchsorted(H["t"], d["t"] + bar_sec * 1000 - sec * 1000, side="right") - 1
     return H, idx
 
 
@@ -174,12 +185,12 @@ def main() -> None:
         data[s] = d
         print(f"{s}: {d['dev'].sum()} geliştirme mumu")
 
-    out("# Piyasa davranışı analizi (geliştirme dönemi, 8 coin)")
+    out(f"# Piyasa davranışı analizi — {TF} grafik (geliştirme dönemi, 8 coin)")
     out()
     # ------------------------------------------------ A) devam mı geri dönüş mü
     out("## A) Geçmiş getiri → gelecek getiri (korelasyon ×100; ort. 8 coin; örtüşmesiz örnekler)")
     out()
-    hz = {"5dk": 1, "15dk": 3, "1s": 12, "4s": 48, "1g": 288}
+    hz = {k: v // TF_SEC for k, v in {"5dk": 300, "15dk": 900, "1s": 3600, "4s": 14400, "1g": 86400}.items() if v >= TF_SEC}
     out("| geçmiş \\ gelecek | " + " | ".join(hz) + " |")
     out("|---|" + "---|" * len(hz))
     for ln, L in hz.items():
@@ -230,7 +241,7 @@ def main() -> None:
         a1 = d["atr1h"][sig]
         g = agg.setdefault(name, {"n": 0, "fwd": {}, "bar": {}, "coin": {}})
         g["n"] += len(sig)
-        for h, v in fwd(d, e, dirn, (1, 3, 12, 48, 144, 288)).items():
+        for h, v in fwd(d, e, dirn, tuple(FWD.values())).items():
             g["fwd"].setdefault(h, []).append(v)
         for tpk, slk in ((1, 1), (0.5, 1.5), (1, 2), (2, 2), (2, 4)):
             for side, sd in (("devam", 1.0), ("ters", -1.0)):
@@ -243,11 +254,11 @@ def main() -> None:
 
     out("## B) Olaylardan sonra: yön = olayın yönü (devam), getiriler bps (1 bps = %0,01), komisyonsuz")
     out()
-    out("| olay | olay sayısı | +5dk | +15dk | +1s | +4s | +12s | +1g |")
-    out("|---|---|---|---|---|---|---|---|")
+    out("| olay | olay sayısı | " + " | ".join(f"+{k}" for k in FWD) + " |")
+    out("|---|---|" + "---|" * len(FWD))
     for name, g in agg.items():
         cells = []
-        for h in (1, 3, 12, 48, 144, 288):
+        for h in FWD.values():
             v = np.concatenate(g["fwd"][h])
             cells.append(f"{v.mean():+.1f} (t {tstat(v):+.1f})")
         out(f"| {name} | {g['n']} | " + " | ".join(cells) + " |")
@@ -275,7 +286,7 @@ def main() -> None:
     out()
 
     # ------------------------------------------------ C) saatler
-    out("## C) Saat (UTC) bazında: ort. |5 dk getiri| (bps), 1 saatlik ATR (%), komisyonun 1 saatlik ATR'ye oranı")
+    out(f"## C) Saat (UTC) bazında: ort. |{TF} getiri| (bps), 1 saatlik ATR (%), komisyonun 1 saatlik ATR'ye oranı")
     out()
     out("| saat | ort. |getiri| bps | 1s ATR % | komisyon / 1s ATR | ort. yönlü getiri bps (t) |")
     out("|---|---|---|---|---|")

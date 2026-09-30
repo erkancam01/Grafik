@@ -15,6 +15,8 @@ import { COMMISSION, CRITERIA, DEV_COINS, HOLDOUT_COINS, STRESS_COMMISSION, WIND
 interface Frozen {
   script: string;
   inputs: Record<string, unknown>;
+  /** Grafik zaman dilimi, saniye (varsayılan 300). */
+  tf?: number;
   note?: string;
 }
 
@@ -70,12 +72,12 @@ function fundingCost(symbol: string, t: Trade): { cost: number; estimated: boole
 // ------------------------------------------------------------------ belirsiz çıkışlar (1 dk ile)
 
 const M1 = new Map<string, ReturnType<typeof loadBars>>();
-/** TP ve SL aynı 5 dk mumdaysa 1 dk mumlarla hangisinin önce geldiğine bakar: "doğru" | "yanlış" | "çözülemez". */
-function resolveAmb(symbol: string, t: Trade): "doğru" | "yanlış" | "çözülemez" {
+/** TP ve SL aynı grafik mumundaysa 1 dk mumlarla hangisinin önce geldiğine bakar: "doğru" | "yanlış" | "çözülemez". */
+function resolveAmb(symbol: string, t: Trade, tf: number): "doğru" | "yanlış" | "çözülemez" {
   let b = M1.get(symbol);
   if (!b) M1.set(symbol, (b = loadBars(symbol, "1m")));
   const i0 = lowerBound(b.time, t.exitTime);
-  for (let i = i0; i < i0 + 5 && i < b.time.length; i++) {
+  for (let i = i0; i < i0 + tf / 60 && i < b.time.length; i++) {
     const hi = b.high[i]!;
     const lo = b.low[i]!;
     const tpHit = t.dir > 0 ? hi >= t.tp : lo <= t.tp;
@@ -89,8 +91,8 @@ function resolveAmb(symbol: string, t: Trade): "doğru" | "yanlış" | "çözül
 
 // ------------------------------------------------------------------ koşu
 
-async function runSet(pool: Pool, script: string, inputs: Record<string, unknown>, coins: string[], w: Window, comm: number) {
-  const res = await Promise.all(coins.map((symbol) => pool.run({ script: `${ROOT}${script}`, symbol, from: w.from, to: w.to, inputs, comm })));
+async function runSet(pool: Pool, script: string, inputs: Record<string, unknown>, coins: string[], w: Window, comm: number, tf: number) {
+  const res = await Promise.all(coins.map((symbol) => pool.run({ script: `${ROOT}${script}`, symbol, from: w.from, to: w.to, inputs, comm, tf })));
   return Object.fromEntries(coins.map((c, k) => [c, res[k]!.trades])) as Record<string, Trade[]>;
 }
 
@@ -123,17 +125,21 @@ function table(title: string, per: Record<string, Trade[]>, withFunding = false)
   return { md: rows.join("\n"), pooled: p, coins };
 }
 
-function verdict(pooled: Stats, coins: Record<string, Stats>): string[] {
-  const C = CRITERIA.final;
+function verdict(pooled: Stats, coins: Record<string, Stats>, holdout: boolean): string[] {
+  const C = holdout ? CRITERIA.holdout : CRITERIA.final;
   const cs = Object.values(coins);
   const checks: [string, boolean][] = [
     [`Toplam kazanma ≥ %${C.pooledWinRate} (${f(pooled.winRate, 1)})`, pooled.winRate >= C.pooledWinRate],
-    [`Her coinde kazanma ≥ %${C.perCoinWinRate} (en düşük ${f(Math.min(...cs.map((s) => s.winRate)), 1)})`, cs.every((s) => s.winRate >= C.perCoinWinRate)],
     [`Toplam ort. işlem > %${C.pooledAvgRet} (${f(pooled.avgRet, 3)})`, pooled.avgRet > C.pooledAvgRet],
     [`Toplam PF > ${C.pooledPf} (${f(pooled.pf)})`, pooled.pf > C.pooledPf],
-    [`PF > 1 en az ${C.pfCoins}/${cs.length} coinde (${cs.filter((s) => s.pf > 1).length})`, cs.filter((s) => s.pf > 1).length >= C.pfCoins],
-    [`Coin başına ≥ ${C.minTradesPerCoin} işlem (en az ${Math.min(...cs.map((s) => s.n))})`, cs.every((s) => s.n >= C.minTradesPerCoin)],
   ];
+  if (holdout) {
+    const H = CRITERIA.holdout;
+    checks.push(
+      [`Her coinde kazanma ≥ %${H.perCoinWinRate} (en düşük ${f(Math.min(...cs.map((s) => s.winRate)), 1)})`, cs.every((s) => s.winRate >= H.perCoinWinRate)],
+      [`PF > 1 en az ${H.pfCoins}/${cs.length} coinde (${cs.filter((s) => s.pf > 1).length})`, cs.filter((s) => s.pf > 1).length >= H.pfCoins],
+    );
+  }
   return checks.map(([t, ok]) => `- ${ok ? "✅" : "❌"} ${t}`);
 }
 
@@ -146,27 +152,35 @@ async function main(): Promise<void> {
   mkdirSync(outDir, { recursive: true });
   appendFileSync(`${outDir}/looks.log`, `${new Date().toISOString()} final.ts ${w.key} ${coins.join(",")} ${frozenPath}\n`);
   const pool = new Pool();
-  const md: string[] = [`# ${w.name}: ${new Date(w.from).toISOString()} → ${new Date(w.to).toISOString()}`, "", `Betik: \`${frozen.script}\``, "", "Ayar: `" + JSON.stringify(frozen.inputs) + "`", ""];
+  const tf = frozen.tf ?? 300;
+  const md: string[] = [
+    `# ${w.name}: ${new Date(w.from).toISOString()} → ${new Date(w.to).toISOString()}`,
+    "",
+    `Betik: \`${frozen.script}\` · grafik ${tf / 60} dk`,
+    "",
+    "Ayar: `" + JSON.stringify(frozen.inputs) + "`" + (frozen.note ? ` — ${frozen.note}` : ""),
+    "",
+  ];
 
-  const main = await runSet(pool, frozen.script, frozen.inputs, coins, w, COMMISSION);
+  const main = await runSet(pool, frozen.script, frozen.inputs, coins, w, COMMISSION, tf);
   const A = table(`UT Bot Pro — ${w.name}, komisyon %${COMMISSION}/taraf`, main, true);
-  md.push(A.md, "", "**Kabul:**", ...verdict(A.pooled, A.coins), "");
+  md.push(A.md, "", "**Kabul:**", ...verdict(A.pooled, A.coins, false), "");
 
   const amb = { doğru: 0, yanlış: 0, çözülemez: 0 };
-  for (const [sym, ts] of Object.entries(main)) for (const t of ts) if (t.amb) amb[resolveAmb(sym, t)]++;
+  for (const [sym, ts] of Object.entries(main)) for (const t of ts) if (t.amb) amb[resolveAmb(sym, t, tf)]++;
   md.push(`Belirsiz çıkışlar (1 dk ile): motor doğru ${amb.doğru}, yanlış ${amb.yanlış}, çözülemez ${amb.çözülemez}.`, "");
 
-  const stress = await runSet(pool, frozen.script, frozen.inputs, coins, w, STRESS_COMMISSION);
+  const stress = await runSet(pool, frozen.script, frozen.inputs, coins, w, STRESS_COMMISSION, tf);
   md.push(table(`Stres: komisyon %${STRESS_COMMISSION}/taraf`, stress).md, "");
 
-  const orig = await runSet(pool, "src/pine/library/ut_bot_strategy.pine", {}, coins, w, COMMISSION);
+  const orig = await runSet(pool, "src/pine/library/ut_bot_strategy.pine", {}, coins, w, COMMISSION, tf);
   md.push(table("Karşılaştırma: orijinal UT Bot Strateji (varsayılan)", orig).md, "");
 
   if (w.key === "final") {
     const full: Window = { key: "all", name: "Tüm dönem", from: WINDOWS.back.from, to: WINDOWS.final.to };
-    const hold = await runSet(pool, frozen.script, frozen.inputs, HOLDOUT_COINS, full, COMMISSION);
+    const hold = await runSet(pool, frozen.script, frozen.inputs, HOLDOUT_COINS, full, COMMISSION, tf);
     const H = table(`Görülmemiş coinler — tüm dönem (${new Date(full.from).toISOString().slice(0, 10)} → ${new Date(full.to).toISOString().slice(0, 10)})`, hold, true);
-    md.push(H.md, "");
+    md.push(H.md, "", "**Kabul (görülmemiş coinler):**", ...verdict(H.pooled, H.coins, true), "");
   }
   await pool.close();
   const text = md.join("\n");
