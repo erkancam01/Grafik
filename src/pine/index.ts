@@ -2,6 +2,7 @@
 import { compile, type Compiled } from "./compiler";
 import { Frame, NeedData, Runtime, seriesFrom, type SeriesCtx } from "./engine";
 import { PineError } from "./errors";
+import { propInputs } from "./strategy";
 import type { BarsData, PineOutput, RunOptions, RunResult } from "./types";
 
 export { compile } from "./compiler";
@@ -10,11 +11,12 @@ export * from "./types";
 
 function collect(rt: Runtime): PineOutput {
   if (!rt.metaSet && rt.main.n > 0) rt.warn("indicator(…) çağrısı bulunamadı; varsayılan ayarlar kullanıldı");
+  const st = rt.strategy;
   return {
     meta: rt.meta,
-    inputs: rt.inputs,
+    inputs: st ? [...rt.inputs, ...propInputs(st.declared)] : rt.inputs,
     plots: [...rt.plots.values()],
-    shapes: [...rt.shapes.values()],
+    shapes: st ? [...rt.shapes.values(), st.fillShapes()] : [...rt.shapes.values()],
     barcolors: rt.barcolors,
     bgcolors: rt.bgcolors,
     hlines: [...rt.hlines.values()],
@@ -22,6 +24,7 @@ function collect(rt: Runtime): PineOutput {
     logs: rt.logs,
     warnings: [...rt.warnings],
     stats: { bars: rt.main.n, ms: Date.now() - rt.started, ops: rt.ops },
+    strategy: st ? st.report() : null,
   };
 }
 
@@ -41,8 +44,10 @@ export function run(code: string | Compiled, bars: BarsData, opts: RunOptions = 
     rt.gframe = new Frame(c.nslots);
     for (let i = 0; i < main.n; i++) {
       rt.bar = i;
+      rt.strategy?.beginBar(i);
       c.main(rt, rt.gframe);
       if (rt.missing.length) throw new NeedData(rt.missing);
+      rt.strategy?.endBar(i);
     }
     return { ok: true, output: collect(rt) };
   } catch (e) {

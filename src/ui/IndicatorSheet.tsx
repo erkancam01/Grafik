@@ -104,7 +104,10 @@ export function IndicatorSheet({
           {LIBRARY.map((it) => (
             <li key={it.id} className="flex items-center gap-2 px-3 py-2.5">
               <div className="min-w-0 flex-1">
-                <div className="text-[14px] font-medium">{it.name}</div>
+                <div className="flex items-center gap-1.5 text-[14px] font-medium">
+                  {it.name}
+                  {it.strategy && <span className="rounded bg-accent/15 px-1.5 text-[10px] font-semibold uppercase text-accent">Strateji</span>}
+                </div>
                 <div className="truncate text-[12px] text-muted">{it.description}</div>
               </div>
               <button
@@ -223,8 +226,9 @@ export function IndicatorSheet({
           )}
           {okMsg && !err && <div className="text-[13px] text-up">{okMsg}</div>}
           <p className="text-[12px] text-subtle">
-            TradingView'daki bir göstergenin kodunu (Pine Script v4/v5/v6) buraya yapıştırabilirsin. Tablo/etiket/çizgi
-            nesneleri ve strateji betikleri henüz desteklenmiyor.
+            TradingView'daki bir göstergenin ya da stratejinin kodunu (Pine Script v4/v5/v6) buraya yapıştırabilirsin.
+            strategy() betikleri Strateji Test Aracı'nda işlem işlem test edilir. Tablo/etiket/çizgi nesneleri henüz
+            çizilmiyor.
           </p>
           <div className="flex flex-wrap gap-2">
             <button type="button" className="btn btn-outline" onClick={() => validate() && setOkMsg("Kod geçerli.")} data-testid="editor-check">

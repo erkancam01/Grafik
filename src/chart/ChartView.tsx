@@ -59,6 +59,8 @@ interface Props {
   header: ReactNode;
   renderControls: (ind: ChartIndicator) => ReactNode;
   onNeedMore: () => void;
+  /** Bu zaman aralığını göster (ör. strateji işlem listesinden seçilen işlem); `seq` her istekte artar. */
+  focus?: { from: number; to: number; seq: number } | null;
 }
 
 interface Palette {
@@ -106,7 +108,7 @@ function chartOptions(t: Theme, intraday: boolean) {
   };
 }
 
-export function ChartView({ bars, viewKey, theme, indicators, header, renderControls, onNeedMore }: Props) {
+export function ChartView({ bars, viewKey, theme, indicators, header, renderControls, onNeedMore, focus }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -272,7 +274,8 @@ export function ChartView({ bars, viewKey, theme, indicators, header, renderCont
     let pane = 1;
     for (const ind of visibleOutputs) {
       const out = ind.output!;
-      const paneIndex = out.meta.overlay ? 0 : pane++;
+      const hasPane = out.plots.some((p) => p.display) || out.hlines.length > 0 || !!out.bgcolors;
+      const paneIndex = out.meta.overlay || !hasPane ? 0 : pane++;
       const t = times.slice(0, out.stats.bars);
       let maxAbs = 0;
       for (const p of out.plots) for (const v of p.values) if (!Number.isNaN(v)) maxAbs = Math.max(maxAbs, Math.abs(v));
@@ -364,10 +367,14 @@ export function ChartView({ bars, viewKey, theme, indicators, header, renderCont
           NL.priceLines.push([hostSeries, pl]);
         }
       }
-      const ms = out.shapes.flatMap((s) => shapeMarkers(s, t));
-      if (paneIndex === 0) overlayMarkers.push(...ms);
-      else if (first && ms.length) {
-        NL.markers.push(createSeriesMarkers(first, ms.sort((a, b) => a.time - b.time) as never));
+      const paneMs: MarkerSpec[] = [];
+      for (const s of out.shapes) {
+        const ms = shapeMarkers(s, t);
+        if (paneIndex === 0 || s.overlay) overlayMarkers.push(...ms);
+        else paneMs.push(...ms);
+      }
+      if (first && paneMs.length) {
+        NL.markers.push(createSeriesMarkers(first, paneMs.sort((a, b) => a.time - b.time) as never));
       }
     }
     candleMarkers.current?.setMarkers(overlayMarkers.sort((a, b) => a.time - b.time) as never);
@@ -376,6 +383,27 @@ export function ChartView({ bars, viewKey, theme, indicators, header, renderCont
     // yalnız çıktı/görünürlük değişince (canlı tikte değil)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [colorsKey, theme]);
+
+  // odak: seçilen zaman aralığına git
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !focus || !bars || bars.time.length === 0) return;
+    const idx = (t: number) => {
+      let lo = 0;
+      let hi = bars.time.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (bars.time[mid]! < t) lo = mid + 1;
+        else hi = mid;
+      }
+      return lo;
+    };
+    const a = idx(focus.from);
+    const b = Math.max(a, idx(focus.to));
+    const pad = Math.max(15, Math.round((b - a) * 0.4));
+    chart.timeScale().setVisibleLogicalRange({ from: a - pad, to: b + pad });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.seq]);
 
   // açıklama satırı değerleri
   const n = bars?.time.length ?? 0;

@@ -2,21 +2,27 @@
 import bollinger from "./bollinger.pine?raw";
 import emaRibbon from "./ema_ribbon.pine?raw";
 import emaTrend from "./ema_trend_4h.pine?raw";
+import emaTrendStrategy from "./ema_trend_4h_strategy.pine?raw";
 import macd from "./macd.pine?raw";
 import rsi from "./rsi.pine?raw";
 import supertrend from "./supertrend.pine?raw";
 import utBot from "./ut_bot.pine?raw";
+import utBotStrategy from "./ut_bot_strategy.pine?raw";
 
 export interface LibraryItem {
   id: string;
   name: string;
   description: string;
   code: string;
+  /** strategy() betiği: eklenince Strateji Test Aracı açılır. */
+  strategy?: boolean;
 }
 
 export const LIBRARY: LibraryItem[] = [
   { id: "ut_bot", name: "UT Bot Alerts", description: "ATR iz süren stop; Al/Sat etiketleri, mum renkleri, alarmlar", code: utBot },
   { id: "ema_trend_4h", name: "EMA Trend 4s (bot sistemi)", description: "Botun seçilen sistemi: 4s EMA20/EMA100, stop ve boyut", code: emaTrend },
+  { id: "ut_bot_strategy", name: "UT Bot Strateji", description: "Backtest: Al'da long, Sat'ta short; kâr, işlem listesi, düşüş", code: utBotStrategy, strategy: true },
+  { id: "ema_trend_4h_strategy", name: "EMA Trend 4s Strateji (bot sistemi)", description: "Backtest: botun sistemi, 3×ATR stop ile", code: emaTrendStrategy, strategy: true },
   { id: "supertrend", name: "Supertrend", description: "ATR tabanlı trend çizgisi ve dönüş sinyalleri", code: supertrend },
   { id: "ema_ribbon", name: "EMA 20/50/200", description: "Üç üssel hareketli ortalama", code: emaRibbon },
   { id: "bollinger", name: "Bollinger Bantları", description: "SMA ± standart sapma bantları", code: bollinger },

@@ -90,6 +90,8 @@ export interface ShapeOut {
   kind: "shape" | "char" | "arrow";
   offset: number;
   events: ShapeEvent[];
+  /** Betik alt panelde olsa da fiyat grafiğine çizilir (strateji emirleri). */
+  overlay?: boolean;
 }
 
 export interface HlineOut {
@@ -126,6 +128,106 @@ export interface PineOutput {
   logs: string[];
   warnings: string[];
   stats: { bars: number; ms: number; ops: number };
+  /** strategy() betiklerinde: emir/işlem sonuçları (Strateji Test Aracı). */
+  strategy: StrategyOut | null;
+}
+
+// ------------------------------------------------------------------ strateji
+
+export type QtyType = "fixed" | "percent_of_equity" | "cash";
+export type CommissionType = "percent" | "cash_per_contract" | "cash_per_order";
+
+export interface StrategyProps {
+  initialCapital: number;
+  qtyType: QtyType;
+  qtyValue: number;
+  pyramiding: number;
+  commissionType: CommissionType;
+  commissionValue: number;
+  /** Tik cinsinden (piyasa ve stop emirleri bu kadar kötü dolar). */
+  slippage: number;
+  processOrdersOnClose: boolean;
+  calcOnEveryTick: boolean;
+  /** Limit emri ancak fiyat seviyeyi bu kadar tik geçerse dolar. */
+  fillLimitsTicks: number;
+}
+
+export interface StrategyTradeOut {
+  /** 1'den başlayan işlem numarası. */
+  n: number;
+  dir: 1 | -1;
+  qty: number;
+  entryId: string;
+  entryComment: string;
+  entryBar: number;
+  entryTime: number;
+  entryPrice: number;
+  /** Açık işlemde boş. */
+  exitId: string;
+  exitComment: string;
+  exitBar: number;
+  exitTime: number;
+  /** Açık işlemde son kapanış fiyatı. */
+  exitPrice: number;
+  /** Komisyon düşülmüş kâr/zarar (USDT). */
+  profit: number;
+  profitPct: number;
+  commission: number;
+  runup: number;
+  drawdown: number;
+  cumProfit: number;
+  open: boolean;
+}
+
+export interface StrategySide {
+  netProfit: number;
+  netProfitPct: number;
+  grossProfit: number;
+  grossLoss: number;
+  commission: number;
+  trades: number;
+  wins: number;
+  losses: number;
+  evens: number;
+  winRate: number;
+  avgTrade: number;
+  avgTradePct: number;
+  avgWin: number;
+  avgWinPct: number;
+  avgLoss: number;
+  avgLossPct: number;
+  ratioWinLoss: number;
+  largestWin: number;
+  largestWinPct: number;
+  largestLoss: number;
+  largestLossPct: number;
+  avgBars: number;
+  avgBarsWin: number;
+  avgBarsLoss: number;
+  profitFactor: number;
+  maxConsecWins: number;
+  maxConsecLosses: number;
+}
+
+export interface StrategyOut {
+  props: StrategyProps;
+  trades: StrategyTradeOut[];
+  openTrades: StrategyTradeOut[];
+  /** Mum kapanışlarında özsermaye (başlangıç + gerçekleşen + açık kâr/zarar). */
+  equity: Float64Array;
+  all: StrategySide;
+  long: StrategySide;
+  short: StrategySide;
+  openProfit: number;
+  finalEquity: number;
+  maxDrawdown: number;
+  maxDrawdownPct: number;
+  maxRunup: number;
+  maxRunupPct: number;
+  buyHoldPct: number;
+  maxContracts: number;
+  /** Emir verilmiş ama dolmamış emir sayısı (son mumda bekleyenler). */
+  pendingOrders: number;
 }
 
 export interface RunOptions {

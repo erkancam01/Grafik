@@ -6,6 +6,8 @@ export type BuiltinFn = (rt: Runtime, f: Frame, site: number, a: unknown[]) => u
 export interface BuiltinDef {
   params: string[];
   fn: BuiltinFn;
+  /** Pine v4'te konumsal argüman sırası farklıysa (ör. strategy.close(id, when)); adlar `params` içinde olmalı. */
+  v4params?: string[];
 }
 
 export function def(params: string[], fn: BuiltinFn): BuiltinDef {

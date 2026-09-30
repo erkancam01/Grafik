@@ -21,6 +21,7 @@ import {
 } from "./builtins/index";
 import type { BuiltinDef } from "./builtins/registry";
 import { tfToSec } from "./builtins/core";
+import { STRATEGY_HIST } from "./strategy";
 import type { DataRequest, InputMeta, InputType } from "./types";
 import { PineArray, PineDrawing, PineTuple, isNa, num, truthy } from "./values";
 
@@ -534,7 +535,7 @@ export class Compiler {
       const v = CONSTS[name];
       return () => v;
     }
-    if (name.startsWith("strategy.")) throw unsupported("Strateji betikleri desteklenmiyor (yalnız indicator/study)", p);
+    if (name.startsWith("strategy.") && !(name in FUNCS)) throw unsupported(`${name} henüz desteklenmiyor`, p);
     if (drawingNs(name)) {
       const v = name.slice(name.lastIndexOf(".") + 1);
       return () => v;
@@ -546,6 +547,17 @@ export class Compiler {
   private index(e: Extract<Expr, { k: "index" }>, scope: Scope): Ev {
     const k = this.expr(e.idx, scope);
     const o = e.obj;
+    if (o.k === "id" && STRATEGY_HIST.has(o.name) && scope.lookup(o.name) === undefined) {
+      // strategy.position_size[1] …: her mumun betiğe görünen değeri motorda saklanır
+      const nm = o.name;
+      const cur = this.ident(nm, e, scope);
+      return (rt, f) => {
+        const kk = toInt(k(rt, f));
+        if (kk === 0) return cur(rt, f);
+        if (!rt.strategy) return cur(rt, f);
+        return kk > 0 ? rt.strategy.histAt(nm, rt.bar - kk) : Number.NaN;
+      };
+    }
     if (o.k === "id") {
       const slot = scope.lookup(o.name);
       if (slot !== undefined) {
@@ -647,9 +659,7 @@ export class Compiler {
     if (name === "request.security" || name === "security") return this.security(e, scope);
     if (name.startsWith("request.")) throw unsupported(`${name} desteklenmiyor (yalnız request.security)`, e);
     if (name === "input" || name.startsWith("input.")) return this.input(e, scope);
-    if (name === "strategy" || name.startsWith("strategy.")) {
-      throw unsupported("Strateji betikleri desteklenmiyor (yalnız indicator/study)", e);
-    }
+    if (name.startsWith("strategy.") && !FUNCS[name]) throw unsupported(`${name} henüz desteklenmiyor`, e);
     if (name === "study") name = "indicator";
 
     // yöntem çağrısı: arr.push(x), s.length()
@@ -678,7 +688,15 @@ export class Compiler {
   }
 
   private builtinCall(e: Extract<Expr, { k: "call" }>, d: BuiltinDef, name: string, scope: Scope): Ev {
-    const ordered = orderArgs(d.params, e.args, e.named, name, e);
+    let ordered = orderArgs(d.params, e.args, e.named, name, e);
+    if (this.version <= 4 && d.v4params) {
+      // v4 konumsal sırası → güncel sıra (ada göre)
+      const v4 = orderArgs(d.v4params, e.args, e.named, name, e);
+      ordered = d.params.map((p) => {
+        const i = d.v4params!.indexOf(p);
+        return i >= 0 ? v4[i] : undefined;
+      });
+    }
     const evs = ordered.map((a) => (a ? this.expr(a, scope) : null));
     const site = e.site;
     const fn = d.fn;

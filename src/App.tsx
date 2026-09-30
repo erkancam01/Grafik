@@ -10,7 +10,7 @@ import { BAR_INTERVALS, intervalById } from "./data/intervals";
 import { applyLiveBar, mergeBars, type DataSource, type SymbolInfo } from "./data/source";
 import { ExtraData, computeIndicator, loadHistory, type IndicatorResult } from "./indicators/compute";
 import { LIBRARY } from "./pine/library";
-import type { BarsData, PineOutput } from "./pine/types";
+import type { BarsData, PineOutput, StrategyTradeOut } from "./pine/types";
 import {
   DEFAULT_INDICATORS,
   DEFAULT_SETTINGS,
@@ -24,6 +24,7 @@ import {
 import { IconAlert, IconChevron, IconEye, IconEyeOff, IconFx, IconGear, IconMoon, IconPencil, IconSun, IconX } from "./ui/icons";
 import { IndicatorSheet, type EditTarget, type SheetTab } from "./ui/IndicatorSheet";
 import { InputsDialog } from "./ui/InputsDialog";
+import { StrategySheet, StrategyStrip, type StrategyEntry } from "./ui/StrategyPanel";
 import { SymbolPicker } from "./ui/SymbolPicker";
 import { PineWorker } from "./worker/client";
 
@@ -81,6 +82,8 @@ export default function App() {
   const [live, setLive] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const more = useRef({ loading: false, exhausted: false });
+  const [histExhausted, setHistExhausted] = useState(false);
+  const [loadingAll, setLoadingAll] = useState(false);
 
   useEffect(() => {
     if (!src) return;
@@ -88,6 +91,7 @@ export default function App() {
     setBars(null);
     setDataErr(null);
     more.current = { loading: false, exhausted: false };
+    setHistExhausted(false);
     loadHistory(src, symbol, iv.id, 1500)
       .then((b) => {
         if (!cancelled) setBars(b);
@@ -113,12 +117,38 @@ export default function App() {
     more.current.loading = true;
     try {
       const older = await loadHistory(src, symbol, iv.id, Math.min(1000, MAX_BARS - b.time.length), b.time[0]! - 1);
-      if (older.time.length === 0) more.current.exhausted = true;
-      else setBars((prev) => (prev && prev.symbol === symbol && prev.tfSec === iv.sec ? mergeBars(older, prev) : prev));
+      if (older.time.length === 0) {
+        more.current.exhausted = true;
+        setHistExhausted(true);
+      } else setBars((prev) => (prev && prev.symbol === symbol && prev.tfSec === iv.sec ? mergeBars(older, prev) : prev));
     } catch {
       more.current.exhausted = true;
+      setHistExhausted(true);
     } finally {
       more.current.loading = false;
+    }
+  }, [src, bars, symbol, iv.id, iv.sec]);
+
+  /** Strateji testi için geçmişi en çok MAX_BARS muma tamamlar. */
+  const loadAll = useCallback(async () => {
+    const b = bars;
+    if (!src || !b || b.time.length === 0 || more.current.loading || more.current.exhausted || b.time.length >= MAX_BARS) return;
+    more.current.loading = true;
+    setLoadingAll(true);
+    try {
+      const want = MAX_BARS - b.time.length;
+      const older = await loadHistory(src, symbol, iv.id, want, b.time[0]! - 1);
+      if (older.time.length < want) {
+        more.current.exhausted = true;
+        setHistExhausted(true);
+      }
+      if (older.time.length) setBars((prev) => (prev && prev.symbol === symbol && prev.tfSec === iv.sec ? mergeBars(older, prev) : prev));
+    } catch {
+      more.current.exhausted = true;
+      setHistExhausted(true);
+    } finally {
+      more.current.loading = false;
+      setLoadingAll(false);
     }
   }, [src, bars, symbol, iv.id, iv.sec]);
 
@@ -236,6 +266,29 @@ export default function App() {
     };
   });
 
+  // ------------------------------------------------------------ strateji testi
+  const strategies: StrategyEntry[] = chartInds.flatMap((ind) =>
+    ind.visible && ind.output?.strategy ? [{ uid: ind.uid, title: ind.title, out: ind.output.strategy, warnings: ind.warnings }] : [],
+  );
+  const [stratSel, setStratSel] = useState<string | null>(null);
+  const [stratOpen, setStratOpen] = useState(false);
+  const [focus, setFocus] = useState<{ from: number; to: number; seq: number } | null>(null);
+  const selectedStrategy = strategies.find((x) => x.uid === stratSel) ?? strategies[strategies.length - 1] ?? null;
+  const hasStrategy = strategies.length > 0;
+  const autoLoaded = useRef("");
+  useEffect(() => {
+    // strateji varken geçmiş en çok 5000 muma tamamlanır (sembol/zaman dilimi başına bir kez)
+    if (!hasStrategy || !bars || bars.time.length === 0) return;
+    const key = `${bars.symbol}|${bars.tfSec}`;
+    if (autoLoaded.current === key) return;
+    autoLoaded.current = key;
+    void loadAll();
+  }, [hasStrategy, bars, loadAll]);
+  const focusTrade = (t: StrategyTradeOut) => {
+    setFocus((f) => ({ from: t.entryTime, to: t.exitTime, seq: (f?.seq ?? 0) + 1 }));
+    setStratOpen(false);
+  };
+
   // ------------------------------------------------------------ çekmeceler
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -244,8 +297,10 @@ export default function App() {
   const [inputsFor, setInputsFor] = useState<string | null>(null);
 
   const addIndicator = (source: ActiveIndicator["source"]) => {
-    setActive((xs) => [...xs, { uid: uid(), source, inputs: {}, visible: true }]);
+    const id = uid();
+    setActive((xs) => [...xs, { uid: id, source, inputs: {}, visible: true }]);
     setSheetOpen(false);
+    setStratSel(id);
   };
   const setSetting = <K extends keyof Settings>(k: K, v: Settings[K]) => setSettings((s) => ({ ...s, [k]: v }));
 
@@ -379,6 +434,7 @@ export default function App() {
           header={header}
           renderControls={controls}
           onNeedMore={loadMore}
+          focus={focus}
         />
         {!bars && !dataErr && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted">Mumlar yükleniyor…</div>
@@ -394,6 +450,26 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {selectedStrategy && <StrategyStrip entry={selectedStrategy} onOpen={() => setStratOpen(true)} />}
+      {selectedStrategy && (
+        <StrategySheet
+          open={stratOpen}
+          onClose={() => setStratOpen(false)}
+          entries={strategies}
+          selected={selectedStrategy}
+          onSelect={setStratSel}
+          bars={bars}
+          onSettings={() => {
+            setStratOpen(false);
+            setInputsFor(selectedStrategy.uid);
+          }}
+          onFocus={focusTrade}
+          canLoadMore={!!bars && bars.time.length < MAX_BARS && !histExhausted}
+          loadingMore={loadingAll}
+          onLoadMore={() => void loadAll()}
+        />
+      )}
 
       <SymbolPicker
         open={pickerOpen}

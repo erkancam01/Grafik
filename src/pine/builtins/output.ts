@@ -213,9 +213,6 @@ export const OUTPUT: Record<string, BuiltinDef> = {
       return NaN_;
     },
   ),
-  strategy: def([], (rt) => {
-    throw unsupported(`Strateji betikleri desteklenmiyor (yalnız indicator/study). #${rt.bar}`);
-  }),
   library: def([], () => {
     throw unsupported("library betikleri desteklenmiyor");
   }),

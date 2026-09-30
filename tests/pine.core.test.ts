@@ -36,10 +36,10 @@ plot(b)`;
     expect(r2.ok).toBe(false);
   });
 
-  it("strateji ve import açık hata verir", () => {
-    const r = run(`strategy("s")\nplot(close)`, barsFromCloses([1, 2]));
+  it("library ve import açık hata verir", () => {
+    const r = run(`library("l")\nplot(close)`, barsFromCloses([1, 2]));
     expect(r.ok).toBe(false);
-    if (!r.ok && "error" in r) expect(r.error.message).toContain("Strateji");
+    if (!r.ok && "error" in r) expect(r.error.message).toContain("library");
     expect(check(`import foo/bar/1 as b`).ok).toBe(false);
   });
 });

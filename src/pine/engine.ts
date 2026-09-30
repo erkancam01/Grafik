@@ -6,6 +6,7 @@
  * her çerçeve kendi `st` (yerleşik durumları) ve `kids` (alt fonksiyon çerçeveleri) haritasına sahiptir.
  */
 import { PineError } from "./errors";
+import type { StrategyEngine } from "./strategy";
 import type {
   AlertOut,
   BarsData,
@@ -132,6 +133,8 @@ export class Runtime {
   readonly logs: string[] = [];
   readonly warnings = new Set<string>();
   plotNo = 0;
+  /** strategy(…) bildirildiyse emir/işlem motoru. */
+  strategy: StrategyEngine | null = null;
 
   // sınırlar
   ops = 0;

@@ -1,0 +1,49 @@
+//@version=5
+// UT Bot Strateji — UT Bot Alerts sinyalleriyle al-sat testi.
+// Al sinyalinde long, Sat sinyalinde short (ters yöne geçilir). Emirler sinyal mumu kapandıktan sonraki mumun
+// açılışında dolar (TradingView'daki gibi). Varsayılan: 1000 USDT, her işlemde özsermayenin %100'ü,
+// komisyon %0,05 (Binance vadeli piyasa emri). Hepsi Ayarlar → Strateji özellikleri'nden değiştirilebilir.
+strategy("UT Bot Strateji", overlay = true, initial_capital = 1000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100, commission_type = strategy.commission.percent, commission_value = 0.05)
+
+a   = input.float(1, "Hassasiyet (anahtar değer)", step = 0.5)
+c   = input.int(10, "ATR periyodu", minval = 1)
+h   = input.bool(false, "Heikin Ashi mumlarından sinyal")
+yon = input.string("Her ikisi", "İşlem yönü", options = ["Her ikisi", "Yalnız long", "Yalnız short"])
+
+xATR  = ta.atr(c)
+nLoss = a * xATR
+src = h ? request.security(ticker.heikinashi(syminfo.tickerid), timeframe.period, close, lookahead = barmerge.lookahead_off) : close
+
+trail = 0.0
+prevTrail = nz(trail[1], 0)
+trail := if src > prevTrail and src[1] > prevTrail
+    math.max(prevTrail, src - nLoss)
+else if src < prevTrail and src[1] < prevTrail
+    math.min(prevTrail, src + nLoss)
+else if src > prevTrail
+    src - nLoss
+else
+    src + nLoss
+
+pos = 0
+pos := src[1] < prevTrail and src > prevTrail ? 1 : src[1] > prevTrail and src < prevTrail ? -1 : nz(pos[1], 0)
+
+emaSrc = ta.ema(src, 1)
+above  = ta.crossover(emaSrc, trail)
+below  = ta.crossover(trail, emaSrc)
+buy    = src > trail and above
+sell   = src < trail and below
+
+if buy
+    if yon == "Yalnız short"
+        strategy.close("Short")
+    else
+        strategy.entry("Long", strategy.long)
+if sell
+    if yon == "Yalnız long"
+        strategy.close("Long")
+    else
+        strategy.entry("Short", strategy.short)
+
+plot(trail, "İz süren stop", color = pos == 1 ? color.green : pos == -1 ? color.red : color.blue, display = display.none)
+barcolor(src > trail ? color.green : src < trail ? color.red : na)
