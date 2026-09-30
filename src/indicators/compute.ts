@@ -15,7 +15,8 @@ export type IndicatorResult =
   | { ok: true; output: PineOutput }
   | { ok: false; error: { message: string; line: number; col: number; kind: string } };
 
-const MAX_BARS = 5000;
+/** Bir seferde tutulabilecek en çok mum (strateji testinde uzun dönem için). */
+export const MAX_HISTORY = 50_000;
 
 /** Geriye doğru sayfalayarak en çok `count` mum getirir. */
 export async function loadHistory(
@@ -27,7 +28,7 @@ export async function loadHistory(
 ): Promise<BarsData> {
   let out: BarsData | null = null;
   let end = endTime;
-  let left = Math.min(count, MAX_BARS);
+  let left = Math.min(count, MAX_HISTORY);
   while (left > 0) {
     const page = Math.min(left, 1000);
     const b = await src.klines(symbol, interval, page, end);
@@ -62,7 +63,7 @@ export class ExtraData {
     const key = `${dataKey(req)}`;
     const n = main.time.length;
     const span = n ? main.time[n - 1]! - main.time[0]! + main.tfSec * 1000 : 0;
-    const want = Math.min(MAX_BARS, Math.ceil(span / (req.tfSec * 1000)) + (req.tfSec >= main.tfSec ? 400 : 0));
+    const want = Math.min(MAX_HISTORY, Math.ceil(span / (req.tfSec * 1000)) + (req.tfSec >= main.tfSec ? 400 : 0));
     const hit = this.cache.get(key);
     let base: BarsData;
     if (hit && hit.wanted >= want) {

@@ -8,7 +8,7 @@ import { detectBinance } from "./data/binance";
 import { DemoSource } from "./data/demo";
 import { BAR_INTERVALS, intervalById } from "./data/intervals";
 import { applyLiveBar, mergeBars, type DataSource, type SymbolInfo } from "./data/source";
-import { ExtraData, computeIndicator, loadHistory, type IndicatorResult } from "./indicators/compute";
+import { ExtraData, MAX_HISTORY, computeIndicator, loadHistory, type IndicatorResult } from "./indicators/compute";
 import { LIBRARY } from "./pine/library";
 import type { BarsData, PineOutput, StrategyTradeOut } from "./pine/types";
 import {
@@ -36,8 +36,15 @@ interface ResultState {
   rev: number;
 }
 
+/** Kaydırarak yüklenen ve strateji varken varsayılan geçmiş. */
 const MAX_BARS = 5000;
+/** Test başlangıcından önce göstergelerin ısınması için ek mum. */
+const WARMUP_BARS = 300;
 const TICK_THROTTLE_MS = 2000;
+
+function finite(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : Number.NaN;
+}
 
 function isDemo(): boolean {
   try {
@@ -84,6 +91,7 @@ export default function App() {
   const more = useRef({ loading: false, exhausted: false });
   const [histExhausted, setHistExhausted] = useState(false);
   const [loadingAll, setLoadingAll] = useState(false);
+  const histTargetRef = useRef(MAX_BARS);
 
   useEffect(() => {
     if (!src) return;
@@ -113,10 +121,11 @@ export default function App() {
 
   const loadMore = useCallback(async () => {
     const b = bars;
-    if (!src || !b || b.time.length === 0 || more.current.loading || more.current.exhausted || b.time.length >= MAX_BARS) return;
+    const cap = Math.max(MAX_BARS, histTargetRef.current);
+    if (!src || !b || b.time.length === 0 || more.current.loading || more.current.exhausted || b.time.length >= cap) return;
     more.current.loading = true;
     try {
-      const older = await loadHistory(src, symbol, iv.id, Math.min(1000, MAX_BARS - b.time.length), b.time[0]! - 1);
+      const older = await loadHistory(src, symbol, iv.id, Math.min(1000, cap - b.time.length), b.time[0]! - 1);
       if (older.time.length === 0) {
         more.current.exhausted = true;
         setHistExhausted(true);
@@ -129,14 +138,15 @@ export default function App() {
     }
   }, [src, bars, symbol, iv.id, iv.sec]);
 
-  /** Strateji testi için geçmişi en çok MAX_BARS muma tamamlar. */
-  const loadAll = useCallback(async () => {
+  /** Strateji testi için geçmişi `target` muma tamamlar. */
+  const loadAll = useCallback(async (target: number) => {
     const b = bars;
-    if (!src || !b || b.time.length === 0 || more.current.loading || more.current.exhausted || b.time.length >= MAX_BARS) return;
+    if (!src || !b || b.time.length === 0 || b.symbol !== symbol || b.tfSec !== iv.sec) return;
+    if (more.current.loading || more.current.exhausted || b.time.length >= target) return;
     more.current.loading = true;
     setLoadingAll(true);
     try {
-      const want = MAX_BARS - b.time.length;
+      const want = target - b.time.length;
       const older = await loadHistory(src, symbol, iv.id, want, b.time[0]! - 1);
       if (older.time.length < want) {
         more.current.exhausted = true;
@@ -242,7 +252,8 @@ export default function App() {
     const p = prevBars.current;
     prevBars.current = { key, first, n };
     const structural = !p || p.key !== key || p.first !== first || n !== p.n;
-    schedule(structural ? 0 : TICK_THROTTLE_MS);
+    // uzun geçmişte canlı tik hesabı seyrek (ör. 50.000 mumda 20 sn)
+    schedule(structural ? 0 : TICK_THROTTLE_MS * Math.max(1, n / MAX_BARS));
   }, [bars, schedule]);
 
   const activeKey = JSON.stringify(active.map((a) => [a.uid, a.visible, a.inputs, codeOf(a)]));
@@ -275,15 +286,39 @@ export default function App() {
   const [focus, setFocus] = useState<{ from: number; to: number; seq: number } | null>(null);
   const selectedStrategy = strategies.find((x) => x.uid === stratSel) ?? strategies[strategies.length - 1] ?? null;
   const hasStrategy = strategies.length > 0;
-  const autoLoaded = useRef("");
+  const selectedActive = selectedStrategy ? (active.find((a) => a.uid === selectedStrategy.uid) ?? null) : null;
+  const range = { from: finite(selectedActive?.inputs["__s.from"]), to: finite(selectedActive?.inputs["__s.to"]) };
+  const setRange = (from: number, to: number) => {
+    if (!selectedActive) return;
+    setActive((xs) =>
+      xs.map((x) => {
+        if (x.uid !== selectedActive.uid) return x;
+        const inputs = { ...x.inputs };
+        if (Number.isFinite(from)) inputs["__s.from"] = from;
+        else delete inputs["__s.from"];
+        if (Number.isFinite(to)) inputs["__s.to"] = to;
+        else delete inputs["__s.to"];
+        return { ...x, inputs };
+      }),
+    );
+  };
+  // strateji varken geçmiş en az 5000 muma, test başlangıcı daha eskiyse oraya kadar (+ısınma) tamamlanır
+  const earliestFrom = Math.min(
+    ...active.filter((a) => a.visible).map((a) => finite(a.inputs["__s.from"])).filter((x) => Number.isFinite(x)),
+  );
+  const histTarget = !hasStrategy
+    ? MAX_BARS
+    : Math.min(
+        MAX_HISTORY,
+        Math.max(MAX_BARS, Number.isFinite(earliestFrom) ? Math.ceil((Date.now() - earliestFrom) / (iv.sec * 1000)) + WARMUP_BARS : 0),
+      );
+  histTargetRef.current = histTarget;
   useEffect(() => {
-    // strateji varken geçmiş en çok 5000 muma tamamlanır (sembol/zaman dilimi başına bir kez)
-    if (!hasStrategy || !bars || bars.time.length === 0) return;
-    const key = `${bars.symbol}|${bars.tfSec}`;
-    if (autoLoaded.current === key) return;
-    autoLoaded.current = key;
-    void loadAll();
-  }, [hasStrategy, bars, loadAll]);
+    // yalnız seçili sembol/zaman diliminin mumlarıyla; yükleme sürerken ya da veri bittiyse bekle (mumlar değişince yeniden bakılır)
+    if (!hasStrategy || !bars || bars.time.length === 0 || bars.symbol !== symbol || bars.tfSec !== iv.sec) return;
+    if (bars.time.length >= histTarget || more.current.loading || more.current.exhausted) return;
+    void loadAll(histTarget);
+  }, [hasStrategy, bars, loadAll, histTarget, symbol, iv.sec]);
   const focusTrade = (t: StrategyTradeOut) => {
     setFocus((f) => ({ from: t.entryTime, to: t.exitTime, seq: (f?.seq ?? 0) + 1 }));
     setStratOpen(false);
@@ -451,7 +486,7 @@ export default function App() {
         )}
       </main>
 
-      {selectedStrategy && <StrategyStrip entry={selectedStrategy} onOpen={() => setStratOpen(true)} />}
+      {selectedStrategy && <StrategyStrip entry={selectedStrategy} onOpen={() => setStratOpen(true)} busy={loadingAll} />}
       {selectedStrategy && (
         <StrategySheet
           open={stratOpen}
@@ -465,9 +500,11 @@ export default function App() {
             setInputsFor(selectedStrategy.uid);
           }}
           onFocus={focusTrade}
-          canLoadMore={!!bars && bars.time.length < MAX_BARS && !histExhausted}
+          canLoadMore={!!bars && bars.time.length < histTarget && !histExhausted}
           loadingMore={loadingAll}
-          onLoadMore={() => void loadAll()}
+          onLoadMore={() => void loadAll(histTarget)}
+          range={range}
+          onRange={setRange}
         />
       )}
 

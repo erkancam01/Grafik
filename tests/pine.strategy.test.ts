@@ -368,3 +368,49 @@ plot(strategy.position_size)`;
     expect(r2.ok).toBe(false);
   });
 });
+
+describe("strateji: test aralığı", () => {
+  const bars = ohlc(flat([100, 101, 102, 103, 104, 105, 106, 107, 108, 109]));
+  const T = (i: number) => bars.time[i]!;
+  const code = `strategy("t", initial_capital = 1000)
+if bar_index % 3 == 0
+    strategy.entry("L", strategy.long)
+if bar_index % 3 == 1
+    strategy.close("L")`;
+
+  it("aralıksız: tüm veride işlem", () => {
+    const { s } = strat(code, bars);
+    expect(s.trades.map((t) => [t.entryPrice, t.exitPrice])).toEqual([
+      [101, 102],
+      [104, 105],
+      [107, 108],
+    ]);
+    expect([s.rangeBars, s.rangeStart, s.rangeEnd]).toEqual([10, T(0), T(9)]);
+  });
+
+  it("emirler yalnız aralıkta; aralık sonunda bekleyen emir iptal; sonuçlar ve al-ve-tut aralıktan", () => {
+    const { out, s } = strat(code, bars, { "__s.from": T(3), "__s.to": T(6) });
+    expect(s.trades.map((t) => [t.entryPrice, t.exitPrice])).toEqual([[104, 105]]);
+    expect(s.openTrades).toHaveLength(0);
+    expect(s.pendingOrders).toBe(0);
+    expect([s.rangeBars, s.rangeStart, s.rangeEnd]).toEqual([4, T(3), T(6)]);
+    expect(s.buyHoldPct).toBeCloseTo((106 / 103 - 1) * 100, 10);
+    expect([...s.equity].map((v) => (Number.isNaN(v) ? null : v))).toEqual([null, null, null, 1000, 1000, 1001, 1001, null, null, null]);
+    expect(out.shapes.find((x) => x.id === "strategy_fills")!.events.every((e) => e.bar >= 3 && e.bar <= 6)).toBe(true);
+    expect(s.props.fromTime).toBe(T(3));
+  });
+
+  it("aralık bittiğinde açık pozisyon son mumun kapanışında kapanır", () => {
+    const { s } = strat(`strategy("t")\nif bar_index == 1\n    strategy.entry("L", strategy.long)`, bars, { "__s.to": T(4) });
+    expect(s.trades.map((t) => [t.entryBar, t.entryPrice, t.exitBar, t.exitPrice, t.exitComment])).toEqual([[2, 102, 4, 104, "Dönem sonu"]]);
+    expect(s.openTrades).toHaveLength(0);
+  });
+
+  it("ayar formunda başlangıç/bitiş tarihi alanları", () => {
+    const { out } = strat(code, bars);
+    const from = out.inputs.find((m) => m.key === "__s.from")!;
+    const to = out.inputs.find((m) => m.key === "__s.to")!;
+    expect([from.type, to.type, to.endOfDay]).toEqual(["date", "date", true]);
+    expect(Number.isNaN(from.defval as number)).toBe(true);
+  });
+});

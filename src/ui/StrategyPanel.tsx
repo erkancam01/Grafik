@@ -5,6 +5,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { fmtNum, priceDigits } from "../chart/render";
 import type { BarsData, StrategyOut, StrategyProps, StrategySide, StrategyTradeOut } from "../pine/types";
+import { daysAgo, fromDateInput, startOfYear, toDateInput } from "./dates";
 import { IconChart, IconChevron, IconGear } from "./icons";
 import { Sheet } from "./Sheet";
 
@@ -67,7 +68,7 @@ function propsText(p: StrategyProps): string {
 
 // ------------------------------------------------------------------ alt şerit
 
-export function StrategyStrip({ entry, onOpen }: { entry: StrategyEntry; onOpen: () => void }) {
+export function StrategyStrip({ entry, onOpen, busy = false }: { entry: StrategyEntry; onOpen: () => void; busy?: boolean }) {
   const s = entry.out;
   return (
     <button
@@ -87,6 +88,7 @@ export function StrategyStrip({ entry, onOpen }: { entry: StrategyEntry; onOpen:
         <span>Kârlı {Number.isFinite(s.all.winRate) ? `%${fmtNum(s.all.winRate, 1)}` : "—"}</span>
         <span>Düşüş %{fmtNum(s.maxDrawdownPct, 1)}</span>
         <span>KF {ratio(s.all.profitFactor)}</span>
+        {busy && <span className="text-subtle">geçmiş yükleniyor…</span>}
       </span>
       <IconChevron size={14} className="shrink-0 rotate-180 text-muted" />
     </button>
@@ -101,13 +103,19 @@ function EquityChart({ out, bars }: { out: StrategyOut; bars: BarsData | null })
   const cap = out.props.initialCapital;
   const d = useMemo(() => {
     const eq = out.equity;
-    const n = bars ? Math.min(eq.length, bars.time.length) : eq.length;
+    const len = bars ? Math.min(eq.length, bars.time.length) : eq.length;
+    // yalnız test aralığı (aralık dışında özsermaye NaN)
+    let a = 0;
+    while (a < len && !Number.isFinite(eq[a]!)) a++;
+    let b = len - 1;
+    while (b > a && !Number.isFinite(eq[b]!)) b--;
+    const n = b - a + 1;
     if (n < 2) return null;
     const step = Math.max(1, Math.floor(n / W));
     const idx: number[] = [];
-    for (let i = 0; i < n; i += step) idx.push(i);
-    if (idx[idx.length - 1] !== n - 1) idx.push(n - 1);
-    const open0 = bars?.open[0] ?? Number.NaN;
+    for (let i = a; i <= b; i += step) idx.push(i);
+    if (idx[idx.length - 1] !== b) idx.push(b);
+    const open0 = bars?.open[a] ?? Number.NaN;
     const bh = (i: number) => (bars && open0 > 0 ? (cap * bars.close[i]!) / open0 : Number.NaN);
     let lo = cap;
     let hi = cap;
@@ -121,7 +129,7 @@ function EquityChart({ out, bars }: { out: StrategyOut; bars: BarsData | null })
     const pad = (hi - lo) * 0.06 || cap * 0.01;
     lo -= pad;
     hi += pad;
-    const x = (i: number) => ((i / (n - 1)) * W).toFixed(1);
+    const x = (i: number) => (((i - a) / (n - 1)) * W).toFixed(1);
     const y = (v: number) => (H - ((v - lo) / (hi - lo)) * H).toFixed(1);
     const line = (f: (i: number) => number) =>
       idx
@@ -145,6 +153,69 @@ function EquityChart({ out, bars }: { out: StrategyOut; bars: BarsData | null })
         <span className="flex items-center gap-1">
           <span className="inline-block h-0 w-4 border-t border-dashed border-subtle" /> Al ve tut
         </span>
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ test dönemi
+
+const PRESETS: [string, () => [number, number]][] = [
+  ["Tümü", () => [Number.NaN, Number.NaN]],
+  ["30 gün", () => [daysAgo(30), Number.NaN]],
+  ["90 gün", () => [daysAgo(90), Number.NaN]],
+  ["6 ay", () => [daysAgo(182), Number.NaN]],
+  ["1 yıl", () => [daysAgo(365), Number.NaN]],
+  ["2 yıl", () => [daysAgo(730), Number.NaN]],
+  ["3 yıl", () => [daysAgo(1095), Number.NaN]],
+  ["Bu yıl", () => [startOfYear(), Number.NaN]],
+];
+
+const sameTime = (a: number, b: number) => (Number.isNaN(a) && Number.isNaN(b)) || a === b;
+
+function RangeBar({ from, to, onRange }: { from: number; to: number; onRange: (from: number, to: number) => void }) {
+  return (
+    <div className="space-y-1.5" data-testid="range-bar">
+      <div className="grid grid-cols-2 gap-2">
+        <label className="block text-[11px] text-muted">
+          Test başlangıcı
+          <input
+            type="date"
+            className="input mt-0.5 h-8 px-2 text-[13px]"
+            title="Boş: yüklü verinin başından"
+            data-testid="range-from"
+            value={toDateInput(from)}
+            onChange={(e) => !e.target.validity.badInput && onRange(e.target.value ? fromDateInput(e.target.value) : Number.NaN, to)}
+          />
+        </label>
+        <label className="block text-[11px] text-muted">
+          Test bitişi
+          <input
+            type="date"
+            className="input mt-0.5 h-8 px-2 text-[13px]"
+            title="Boş: bugüne kadar"
+            data-testid="range-to"
+            value={toDateInput(to)}
+            onChange={(e) => !e.target.validity.badInput && onRange(from, e.target.value ? fromDateInput(e.target.value, true) : Number.NaN)}
+          />
+        </label>
+      </div>
+      <div className="scroll-x flex gap-1">
+        {PRESETS.map(([label, f]) => {
+          const [a, b] = f();
+          return (
+            <button
+              key={label}
+              type="button"
+              className="pill shrink-0"
+              aria-pressed={sameTime(a, from) && sameTime(b, to)}
+              onClick={() => onRange(a, b)}
+              data-testid={`range-${label}`}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -231,6 +302,8 @@ export function StrategySheet({
   canLoadMore,
   loadingMore,
   onLoadMore,
+  range,
+  onRange,
 }: {
   open: boolean;
   onClose: () => void;
@@ -243,6 +316,8 @@ export function StrategySheet({
   canLoadMore: boolean;
   loadingMore: boolean;
   onLoadMore: () => void;
+  range: { from: number; to: number };
+  onRange: (from: number, to: number) => void;
 }) {
   const [tab, setTab] = useState<"summary" | "trades">("summary");
   const [limit, setLimit] = useState(200);
@@ -277,6 +352,7 @@ export function StrategySheet({
             <IconGear size={14} /> Ayarlar
           </button>
         </div>
+        <RangeBar from={range.from} to={range.to} onRange={onRange} />
       </div>
 
       {tab === "summary" && (
@@ -338,12 +414,20 @@ export function StrategySheet({
           <div className="space-y-1.5 rounded-md border border-line p-2.5 text-[12px] text-muted">
             <div>{propsText(s.props)}</div>
             <div data-testid="strategy-period">
-              Test dönemi: {n ? `${when(bars!.time[0]!)} → ${when(bars!.time[n - 1]!)}` : "—"} · {n} mum
+              Test dönemi:{" "}
+              {Number.isFinite(s.rangeStart) ? `${when(s.rangeStart)} → ${when(s.rangeEnd)} · ${s.rangeBars} mum` : "seçilen aralıkta mum yok"}
               {s.pendingOrders ? ` · ${s.pendingOrders} bekleyen emir` : ""}
             </div>
-            {canLoadMore && (
-              <button type="button" className="btn btn-outline h-8" onClick={onLoadMore} disabled={loadingMore} data-testid="strategy-load-more">
-                {loadingMore ? "Yükleniyor…" : "Daha uzun dönem (5000 muma kadar)"}
+            {n > 0 && Number.isFinite(range.from) && range.from < bars!.time[0]! && (
+              <div className="text-warn" data-testid="range-note">
+                {loadingMore
+                  ? "Seçilen başlangıç için geçmiş yükleniyor…"
+                  : `Veri ${when(bars!.time[0]!)} tarihinden başlıyor (Binance'te daha eski veri yok ya da en çok 50.000 mum yüklenebilir); test bu tarihten başladı.`}
+              </div>
+            )}
+            {canLoadMore && !loadingMore && (
+              <button type="button" className="btn btn-outline h-8" onClick={onLoadMore} data-testid="strategy-load-more">
+                Eksik geçmişi yükle
               </button>
             )}
             {selected.warnings.length > 0 && (
