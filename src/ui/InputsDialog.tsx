@@ -2,6 +2,7 @@
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { INTERVALS } from "../data/intervals";
 import type { InputMeta } from "../pine/types";
+import { fromDateInput, fromDateTimeInput, toDateInput, toDateTimeInput } from "./dates";
 import { Sheet } from "./Sheet";
 
 const SOURCES = ["open", "high", "low", "close", "hl2", "hlc3", "ohlc4", "hlcc4", "volume"];
@@ -153,6 +154,32 @@ export function InputsDialog({
               </option>
             ))}
           </select>
+        </div>
+      );
+    }
+    if (m.type === "date" || m.type === "time") {
+      const isDate = m.type === "date";
+      const ms = typeof v === "number" ? v : Number.NaN;
+      return (
+        <div key={m.key}>
+          {label}
+          <div className="flex gap-2">
+            <input
+              id={id}
+              className="input"
+              type={isDate ? "date" : "datetime-local"}
+              value={isDate ? toDateInput(ms) : toDateTimeInput(ms)}
+              onChange={(e) => {
+                if (e.target.validity.badInput) return; // yarım yazılmış tarih
+                set(m.key, e.target.value ? (isDate ? fromDateInput(e.target.value, !!m.endOfDay) : fromDateTimeInput(e.target.value)) : Number.NaN);
+              }}
+            />
+            {isDate && Number.isFinite(ms) && (
+              <button type="button" className="btn btn-outline shrink-0" onClick={() => set(m.key, Number.NaN)}>
+                Temizle
+              </button>
+            )}
+          </div>
         </div>
       );
     }

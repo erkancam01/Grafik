@@ -28,7 +28,7 @@ export function dataKey(r: DataRequest): string {
   return `${r.symbol}|${r.tfSec}|${r.heikinAshi ? "HA" : ""}`;
 }
 
-export type InputType = "int" | "float" | "bool" | "string" | "source" | "timeframe" | "color" | "symbol" | "session" | "time" | "price" | "text_area";
+export type InputType = "int" | "float" | "bool" | "string" | "source" | "timeframe" | "color" | "symbol" | "session" | "time" | "date" | "price" | "text_area";
 
 export interface InputMeta {
   key: string;
@@ -42,6 +42,8 @@ export interface InputMeta {
   tooltip?: string;
   group?: string;
   inline?: string;
+  /** "date" girdisinde seçilen günün sonu (bitiş tarihi için). */
+  endOfDay?: boolean;
 }
 
 export type PlotStyle =
@@ -150,6 +152,9 @@ export interface StrategyProps {
   calcOnEveryTick: boolean;
   /** Limit emri ancak fiyat seviyeyi bu kadar tik geçerse dolar. */
   fillLimitsTicks: number;
+  /** Test aralığı (ms, UTC; NaN = sınırsız): emirler yalnız bu aralıktaki mumlarda verilir, sonuçlar bu aralıktan. */
+  fromTime: number;
+  toTime: number;
 }
 
 export interface StrategyTradeOut {
@@ -228,6 +233,10 @@ export interface StrategyOut {
   maxContracts: number;
   /** Emir verilmiş ama dolmamış emir sayısı (son mumda bekleyenler). */
   pendingOrders: number;
+  /** Test aralığındaki ilk ve son mumun zamanı (aralıkta mum yoksa NaN) ve mum sayısı. */
+  rangeStart: number;
+  rangeEnd: number;
+  rangeBars: number;
 }
 
 export interface RunOptions {

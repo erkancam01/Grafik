@@ -153,6 +153,44 @@ test("strateji: UT Bot Strateji → Strateji Test Aracı (özet, işlemler, ayar
   expect(errs).toEqual([]);
 });
 
+test("strateji: test dönemi seçimi sonuçları değiştirir, gereken geçmiş yüklenir", async ({ page }, info) => {
+  const errs = collectErrors(page);
+  await page.goto("/?demo");
+  await page.getByTestId("indicators-button").click();
+  await page.getByTestId("add-ut_bot_strategy").click();
+  const strip = page.getByTestId("strategy-strip");
+  await expect(strip).toContainText("UT Bot Strateji");
+  await strip.click();
+  const sheet = page.getByTestId("strategy-sheet");
+  await expect(sheet.getByTestId("strategy-period")).toContainText("5000 mum");
+  await expect(sheet.getByTestId("range-Tümü")).toHaveAttribute("aria-pressed", "true");
+  const all = await sheet.getByTestId("kpi-net").innerText();
+  await sheet.getByTestId("range-1 yıl").click();
+  await expect(sheet.getByTestId("range-1 yıl")).toHaveAttribute("aria-pressed", "true");
+  await expect(sheet.getByTestId("range-from")).not.toHaveValue("");
+  await expect(sheet.getByTestId("strategy-period")).not.toContainText("5000 mum");
+  await expect(sheet.getByTestId("kpi-net")).not.toHaveText(all);
+  await page.screenshot({ path: `e2e/screenshots/strateji-donem-${info.project.name}.png` });
+  // ayarlar formunda da aynı tarihler
+  await page.getByTestId("st-settings").click();
+  const dlg = page.getByTestId("inputs-dialog");
+  await expect(dlg).toContainText("Test başlangıcı");
+  await expect(dlg.locator('[id="in-__s.from"]')).not.toHaveValue("");
+  await expect(dlg.locator('[id="in-__s.to"]')).toHaveValue("");
+  await dlg.getByRole("button", { name: "Vazgeç" }).click();
+  // 1 saatlikte 2 yıl: 5000 mumdan fazlası yüklenir ve test tüm dönemi kapsar
+  await page.getByTestId("tf-1h").click();
+  await strip.click();
+  await sheet.getByTestId("range-2 yıl").click();
+  await expect(async () => {
+    const txt = await sheet.getByTestId("strategy-period").innerText();
+    const bars = Number(/· (\d+) mum/.exec(txt)?.[1] ?? 0);
+    expect(bars).toBeGreaterThan(17000);
+  }).toPass({ timeout: 30_000 });
+  await expect(sheet.getByTestId("range-note")).toHaveCount(0);
+  expect(errs).toEqual([]);
+});
+
 test("strateji kodu yapıştır (Pine v4): test aracı çıkar", async ({ page }) => {
   await page.goto("/?demo");
   await page.getByTestId("indicators-button").click();

@@ -181,6 +181,8 @@ export const DEFAULT_PROPS: StrategyProps = {
   processOrdersOnClose: false,
   calcOnEveryTick: false,
   fillLimitsTicks: 0,
+  fromTime: NaN_,
+  toTime: NaN_,
 };
 
 export class StrategyEngine {
@@ -196,6 +198,7 @@ export class StrategyEngine {
   private cur = -1;
   private readonly path = new BarPath();
   private evT = 0;
+  private ended = false;
   readonly fills: ShapeEvent[] = [];
 
   netProfit = 0;
@@ -306,10 +309,16 @@ export class StrategyEngine {
   }
 
   // ---------------------------------------------------------------- emir verme (betikten)
-  /** Oluşmakta olan son mumda (calc_on_every_tick kapalıyken) yeni emir verilmez. */
+  /** Mum test aralığında mı (başlangıç/bitiş verilmediyse hep evet). */
+  inRange(i: number): boolean {
+    const t = this.rt.main.time[i]!;
+    return !(t < this.props.fromTime) && !(t > this.props.toTime);
+  }
+
+  /** Emir yalnız test aralığındaki kapanmış mumlarda verilir (oluşan son mumda calc_on_every_tick kapalıyken verilmez). */
   canPlace(): boolean {
     const S = this.rt.main;
-    if (!this.rt.isMain) return false;
+    if (!this.rt.isMain || !this.inRange(this.rt.bar)) return false;
     return !(this.rt.bar === S.n - 1 && S.lastRealtime && !this.props.calcOnEveryTick);
   }
 
@@ -478,11 +487,21 @@ export class StrategyEngine {
       this.remove(o);
       this.execMarket(o, 3);
     }
+    const S = this.rt.main;
+    if (!this.ended && this.inRange(i) && i + 1 < S.n && !this.inRange(i + 1)) {
+      // test aralığının son mumu: bekleyen emirler iptal, açık pozisyon kapanışta kapatılır
+      this.ended = true;
+      this.orders = [];
+      const d = this.posDir;
+      if (d !== 0 && this.closeTrades(this.trades.slice(), Infinity, S.close[i]!, 3, "", "Dönem sonu", false, "") > 0) {
+        this.marker(-d, "Dönem sonu");
+      }
+    }
     for (const t of this.trades) {
       this.touch(t, 3);
       t.lastT = 0;
     }
-    const S = this.rt.main;
+    if (!this.inRange(i)) return;
     this.equity[i] = this.equityAt(S.close[i]!);
     const pts = this.trades.length ? [this.path.p[1], this.path.p[2], this.path.p[3]] : [this.path.p[3]];
     for (const p of pts) {
@@ -877,7 +896,15 @@ export class StrategyEngine {
       };
     });
     const cap = this.props.initialCapital;
-    const firstOpen = S.open[0] ?? NaN_;
+    let first = -1;
+    let lastIn = -1;
+    for (let i = 0; i < S.n; i++) {
+      if (!this.inRange(i)) continue;
+      if (first < 0) first = i;
+      lastIn = i;
+    }
+    const firstOpen = first >= 0 ? S.open[first]! : NaN_;
+    const endClose = lastIn >= 0 ? S.close[lastIn]! : NaN_;
     return {
       props: this.props,
       trades,
@@ -892,9 +919,12 @@ export class StrategyEngine {
       maxDrawdownPct: this.maxDDPct * 100,
       maxRunup: this.maxRunup,
       maxRunupPct: this.maxRunupPct * 100,
-      buyHoldPct: firstOpen > 0 ? (lastClose / firstOpen - 1) * 100 : NaN_,
+      buyHoldPct: firstOpen > 0 ? (endClose / firstOpen - 1) * 100 : NaN_,
       maxContracts: Math.max(this.maxLong, this.maxShort),
       pendingOrders: this.orders.length,
+      rangeStart: first >= 0 ? S.time[first]! : NaN_,
+      rangeEnd: lastIn >= 0 ? S.time[lastIn]! : NaN_,
+      rangeBars: first >= 0 ? lastIn - first + 1 : 0,
     };
   }
 
@@ -998,6 +1028,8 @@ function valueOf<T extends string>(pairs: [T, string][], label: unknown, fallbac
 export function propInputs(d: StrategyProps): InputMeta[] {
   const g = PROP_GROUP;
   return [
+    { key: "__s.from", title: "Test başlangıcı", type: "date", defval: d.fromTime, group: g, tooltip: "Boşsa yüklü verinin başından" },
+    { key: "__s.to", title: "Test bitişi", type: "date", defval: d.toTime, group: g, tooltip: "Boşsa bugüne kadar", endOfDay: true },
     { key: "__s.capital", title: "Başlangıç sermayesi (USDT)", type: "float", defval: d.initialCapital, minval: 1, group: g },
     { key: "__s.qty_type", title: "Emir büyüklüğü birimi", type: "string", defval: labelOf(QTY_LABELS, d.qtyType), options: QTY_LABELS.map((x) => x[1]), group: g },
     { key: "__s.qty", title: "Emir büyüklüğü", type: "float", defval: d.qtyValue, minval: 0, group: g },
@@ -1021,6 +1053,8 @@ function applyOverrides(d: StrategyProps, v: Record<string, unknown>): StrategyP
     commissionValue: Math.max(0, numOr(v["__s.comm"], d.commissionValue)),
     slippage: Math.max(0, Math.floor(numOr(v["__s.slippage"], d.slippage))),
     processOrdersOnClose: typeof v["__s.on_close"] === "boolean" ? (v["__s.on_close"] as boolean) : d.processOrdersOnClose,
+    fromTime: numOr(v["__s.from"], d.fromTime),
+    toTime: numOr(v["__s.to"], d.toTime),
   };
 }
 
@@ -1205,6 +1239,8 @@ export const STRATEGY_FUNCS: Record<string, BuiltinDef> = {
       processOrdersOnClose: a[18] === true,
       calcOnEveryTick: a[8] === true,
       fillLimitsTicks: Math.max(0, Math.floor(numv(a[10], 0))),
+      fromTime: NaN_,
+      toTime: NaN_,
     };
     if (a[7] === true) rt.warn("calc_on_order_fills desteklenmiyor; betik yalnız mum kapanışında çalışır");
     if ((a[20] !== undefined && numv(a[20], 100) < 100) || (a[21] !== undefined && numv(a[21], 100) < 100)) {
