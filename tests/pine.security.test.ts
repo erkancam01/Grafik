@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { run } from "../src/pine";
 import { LIBRARY } from "../src/pine/library";
 import type { PineOutput, RunResult } from "../src/pine/types";
-import { randomBars, resample } from "./helpers";
+import { randomBars, resample, runWithData } from "./helpers";
 
 function ok(r: RunResult): PineOutput {
   if (!r.ok) throw new Error(JSON.stringify("error" in r ? r.error : r.needData));
@@ -90,9 +90,8 @@ describe("performans", () => {
 
   it("tüm kütüphane 5000 mumda makul sürede", () => {
     const big = randomBars(5000, 5, 900);
-    const extra = { "BTCUSDT|14400|": resample(big, 14400) };
     const t0 = performance.now();
-    for (const item of LIBRARY) ok(run(item.code, big, { extra }));
+    for (const item of LIBRARY) ok(runWithData(item.code, big));
     expect(performance.now() - t0).toBeLessThan(6000);
   });
 });

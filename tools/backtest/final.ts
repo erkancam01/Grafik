@@ -1,0 +1,182 @@
+/**
+ * Son sınav: dondurulmuş ayar (frozen.json) hiç bakılmamış veride BİR KEZ koşulur.
+ *   A) Son sınav dönemi × 6 coin (geliştirme coinleri + görülmemiş coinler)
+ *   B) Görülmemiş coinler (XRP, BNB, DOGE) × tüm veri dönemi
+ * Rapor: kabul ölçütleri (protocol.ts), Wilson ve gün-blok bootstrap aralıkları, %0,065 komisyon stresi, gerçek
+ * fonlama oranlarıyla düzeltilmiş getiri, 1 dk mumlarla belirsiz çıkış denetimi; orijinal UT Bot ile yan yana.
+ * Kullanım: npm run bt:final -- [--frozen tools/backtest/frozen.json] [--window final|back] [--coins A,B]
+ * Her çalıştırma .cache/results/looks.log'a yazılır (bakış hakkı: protocol.ts LOOKS).
+ */
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { BARS_DIR, bootstrapAvgRet, loadBars, lowerBound, ROOT, stats, wilson, type Stats, type Trade } from "./lib";
+import { Pool } from "./pool";
+import { COMMISSION, CRITERIA, DEV_COINS, HOLDOUT_COINS, STRESS_COMMISSION, WINDOWS, type Window } from "./protocol";
+
+interface Frozen {
+  script: string;
+  inputs: Record<string, unknown>;
+  note?: string;
+}
+
+const arg = (name: string): string | undefined => {
+  const i = process.argv.indexOf(`--${name}`);
+  return i > 0 ? process.argv[i + 1] : undefined;
+};
+
+const f = (x: number, d = 2) => (Number.isFinite(x) ? x.toFixed(d) : String(x));
+
+// ------------------------------------------------------------------ fonlama
+
+const FUND = new Map<string, [number, number][]>();
+function funding(symbol: string): [number, number][] {
+  let a = FUND.get(symbol);
+  if (!a) {
+    const p = `${BARS_DIR}/${symbol}_funding.json`;
+    FUND.set(symbol, (a = existsSync(p) ? (JSON.parse(readFileSync(p, "utf8")) as [number, number][]) : []));
+  }
+  return a;
+}
+
+/** İşlem süresince ödenen/alınan fonlama (% , pozisyon değerine göre; long pozitif oranda öder). Veri bitince son 30 günün ortalaması. */
+function fundingCost(symbol: string, t: Trade): { cost: number; estimated: boolean } {
+  const fr = funding(symbol);
+  if (!fr.length) return { cost: 0, estimated: true };
+  const last = fr[fr.length - 1]![0];
+  const recent = fr.filter(([ts]) => ts > last - 30 * 86_400_000);
+  const avg = recent.reduce((s, [, r]) => s + r, 0) / recent.length;
+  let sum = 0;
+  let estimated = false;
+  // fonlama 00:00, 08:00, 16:00 UTC; pozisyon o anda açıksa uygulanır
+  const step = 8 * 3_600_000;
+  for (let ts = Math.ceil((t.entryTime + 1) / step) * step; ts <= t.exitTime; ts += step) {
+    if (ts > last) {
+      sum += avg;
+      estimated = true;
+      continue;
+    }
+    let lo = 0;
+    let hi = fr.length;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (fr[m]![0] < ts) lo = m + 1;
+      else hi = m;
+    }
+    const hit = fr[lo];
+    if (hit && Math.abs(hit[0] - ts) < 60_000) sum += hit[1];
+  }
+  return { cost: t.dir * sum * 100, estimated };
+}
+
+// ------------------------------------------------------------------ belirsiz çıkışlar (1 dk ile)
+
+const M1 = new Map<string, ReturnType<typeof loadBars>>();
+/** TP ve SL aynı 5 dk mumdaysa 1 dk mumlarla hangisinin önce geldiğine bakar: "doğru" | "yanlış" | "çözülemez". */
+function resolveAmb(symbol: string, t: Trade): "doğru" | "yanlış" | "çözülemez" {
+  let b = M1.get(symbol);
+  if (!b) M1.set(symbol, (b = loadBars(symbol, "1m")));
+  const i0 = lowerBound(b.time, t.exitTime);
+  for (let i = i0; i < i0 + 5 && i < b.time.length; i++) {
+    const hi = b.high[i]!;
+    const lo = b.low[i]!;
+    const tpHit = t.dir > 0 ? hi >= t.tp : lo <= t.tp;
+    const slHit = t.dir > 0 ? lo <= t.sl : hi >= t.sl;
+    if (tpHit && slHit) return "çözülemez";
+    if (tpHit) return t.exit === "TP" ? "doğru" : "yanlış";
+    if (slHit) return t.exit === "TP" ? "yanlış" : "doğru";
+  }
+  return "çözülemez";
+}
+
+// ------------------------------------------------------------------ koşu
+
+async function runSet(pool: Pool, script: string, inputs: Record<string, unknown>, coins: string[], w: Window, comm: number) {
+  const res = await Promise.all(coins.map((symbol) => pool.run({ script: `${ROOT}${script}`, symbol, from: w.from, to: w.to, inputs, comm })));
+  return Object.fromEntries(coins.map((c, k) => [c, res[k]!.trades])) as Record<string, Trade[]>;
+}
+
+function table(title: string, per: Record<string, Trade[]>, withFunding = false): { md: string; pooled: Stats; coins: Record<string, Stats> } {
+  const rows: string[] = [`### ${title}`, "", "| Coin | İşlem | Kazanma % (Wilson %95) | Ort. işlem % | PF | Maks. ardışık kayıp | Belirsiz |", "|---|---|---|---|---|---|---|"];
+  const coins: Record<string, Stats> = {};
+  for (const [sym, ts] of Object.entries(per)) {
+    const s = stats(ts);
+    coins[sym] = s;
+    const [lo, hi] = wilson(s.wins, s.n);
+    rows.push(`| ${sym} | ${s.n} | ${f(s.winRate, 1)} (${f(lo, 1)}–${f(hi, 1)}) | ${f(s.avgRet, 3)} | ${f(s.pf)} | ${s.maxConsecLoss} | ${s.amb} |`);
+  }
+  const all = Object.values(per).flat();
+  const p = stats(all);
+  const [lo, hi] = wilson(p.wins, p.n);
+  const [blo, bhi] = bootstrapAvgRet(all);
+  rows.push(`| **Toplam** | ${p.n} | **${f(p.winRate, 1)}** (${f(lo, 1)}–${f(hi, 1)}) | ${f(p.avgRet, 3)} (${f(blo, 3)}…${f(bhi, 3)}) | ${f(p.pf)} | ${p.maxConsecLoss} | ${p.amb} |`);
+  if (withFunding) {
+    let est = 0;
+    const adj = Object.entries(per).flatMap(([sym, ts]) =>
+      ts.map((t) => {
+        const fc = fundingCost(sym, t);
+        if (fc.estimated) est++;
+        return { ...t, ret: t.ret - fc.cost };
+      }),
+    );
+    const q = stats(adj);
+    rows.push("", `Fonlama dahil (gerçek oranlar${est ? `; ${est} işlemde son 30 günün ortalamasıyla tahmin` : ""}): kazanma ${f(q.winRate, 1)}%, ort. işlem ${f(q.avgRet, 3)}%, PF ${f(q.pf)}`);
+  }
+  return { md: rows.join("\n"), pooled: p, coins };
+}
+
+function verdict(pooled: Stats, coins: Record<string, Stats>): string[] {
+  const C = CRITERIA.final;
+  const cs = Object.values(coins);
+  const checks: [string, boolean][] = [
+    [`Toplam kazanma ≥ %${C.pooledWinRate} (${f(pooled.winRate, 1)})`, pooled.winRate >= C.pooledWinRate],
+    [`Her coinde kazanma ≥ %${C.perCoinWinRate} (en düşük ${f(Math.min(...cs.map((s) => s.winRate)), 1)})`, cs.every((s) => s.winRate >= C.perCoinWinRate)],
+    [`Toplam ort. işlem > %${C.pooledAvgRet} (${f(pooled.avgRet, 3)})`, pooled.avgRet > C.pooledAvgRet],
+    [`Toplam PF > ${C.pooledPf} (${f(pooled.pf)})`, pooled.pf > C.pooledPf],
+    [`PF > 1 en az ${C.pfCoins}/${cs.length} coinde (${cs.filter((s) => s.pf > 1).length})`, cs.filter((s) => s.pf > 1).length >= C.pfCoins],
+    [`Coin başına ≥ ${C.minTradesPerCoin} işlem (en az ${Math.min(...cs.map((s) => s.n))})`, cs.every((s) => s.n >= C.minTradesPerCoin)],
+  ];
+  return checks.map(([t, ok]) => `- ${ok ? "✅" : "❌"} ${t}`);
+}
+
+async function main(): Promise<void> {
+  const frozenPath = arg("frozen") ?? "tools/backtest/frozen.json";
+  const frozen = JSON.parse(readFileSync(`${ROOT}${frozenPath}`, "utf8")) as Frozen;
+  const w = WINDOWS[(arg("window") ?? "final") as keyof typeof WINDOWS];
+  const coins = arg("coins")?.split(",") ?? [...DEV_COINS, ...HOLDOUT_COINS];
+  const outDir = `${ROOT}.cache/results`;
+  mkdirSync(outDir, { recursive: true });
+  appendFileSync(`${outDir}/looks.log`, `${new Date().toISOString()} final.ts ${w.key} ${coins.join(",")} ${frozenPath}\n`);
+  const pool = new Pool();
+  const md: string[] = [`# ${w.name}: ${new Date(w.from).toISOString()} → ${new Date(w.to).toISOString()}`, "", `Betik: \`${frozen.script}\``, "", "Ayar: `" + JSON.stringify(frozen.inputs) + "`", ""];
+
+  const main = await runSet(pool, frozen.script, frozen.inputs, coins, w, COMMISSION);
+  const A = table(`UT Bot Pro — ${w.name}, komisyon %${COMMISSION}/taraf`, main, true);
+  md.push(A.md, "", "**Kabul:**", ...verdict(A.pooled, A.coins), "");
+
+  const amb = { doğru: 0, yanlış: 0, çözülemez: 0 };
+  for (const [sym, ts] of Object.entries(main)) for (const t of ts) if (t.amb) amb[resolveAmb(sym, t)]++;
+  md.push(`Belirsiz çıkışlar (1 dk ile): motor doğru ${amb.doğru}, yanlış ${amb.yanlış}, çözülemez ${amb.çözülemez}.`, "");
+
+  const stress = await runSet(pool, frozen.script, frozen.inputs, coins, w, STRESS_COMMISSION);
+  md.push(table(`Stres: komisyon %${STRESS_COMMISSION}/taraf`, stress).md, "");
+
+  const orig = await runSet(pool, "src/pine/library/ut_bot_strategy.pine", {}, coins, w, COMMISSION);
+  md.push(table("Karşılaştırma: orijinal UT Bot Strateji (varsayılan)", orig).md, "");
+
+  if (w.key === "final") {
+    const full: Window = { key: "all", name: "Tüm dönem", from: WINDOWS.back.from, to: WINDOWS.final.to };
+    const hold = await runSet(pool, frozen.script, frozen.inputs, HOLDOUT_COINS, full, COMMISSION);
+    const H = table(`Görülmemiş coinler — tüm dönem (${new Date(full.from).toISOString().slice(0, 10)} → ${new Date(full.to).toISOString().slice(0, 10)})`, hold, true);
+    md.push(H.md, "");
+  }
+  await pool.close();
+  const text = md.join("\n");
+  const file = `${outDir}/final-${w.key}-${Date.now()}.md`;
+  writeFileSync(file, text + "\n");
+  console.log(text);
+  console.log(`\nrapor: ${file}`);
+}
+
+main().catch((e) => {
+  console.error(e instanceof Error ? e.message : e);
+  process.exit(1);
+});

@@ -1,4 +1,23 @@
-import type { BarsData } from "../src/pine/types";
+import { heikinAshi, resample } from "../src/data/source";
+import { run } from "../src/pine";
+import { dataKey, type BarsData, type RunOptions, type RunResult } from "../src/pine/types";
+
+export { resample };
+
+/** Çalıştırır; request.security isteklerini (üst zaman dilimi, Heikin Ashi) aynı mumlardan üreterek karşılar. */
+export function runWithData(code: string, bars: BarsData, opts: RunOptions = {}): RunResult {
+  const extra: Record<string, BarsData> = { ...opts.extra };
+  let r = run(code, bars, { ...opts, extra });
+  for (let round = 0; round < 5 && !r.ok && "needData" in r; round++) {
+    for (const q of r.needData) {
+      const base = q.symbol === bars.symbol ? bars : { ...bars, symbol: q.symbol };
+      const tf = q.tfSec === bars.tfSec ? base : resample(base, q.tfSec);
+      extra[dataKey(q)] = q.heikinAshi ? heikinAshi(tf) : tf;
+    }
+    r = run(code, bars, { ...opts, extra });
+  }
+  return r;
+}
 
 /** Tohumlu rastgele sayı üreteci (mulberry32). */
 export function rng(seed: number): () => number {
@@ -70,44 +89,4 @@ export function randomBars(N: number, seed = 1, tfSec = 3600, start = Date.UTC(2
     p = c;
   }
   return b;
-}
-
-/** Mumları daha büyük zaman dilimine toplar (Binance mumları gibi, epoch hizalı). */
-export function resample(b: BarsData, tfSec: number): BarsData {
-  const out = {
-    time: [] as number[],
-    open: [] as number[],
-    high: [] as number[],
-    low: [] as number[],
-    close: [] as number[],
-    volume: [] as number[],
-  };
-  for (let i = 0; i < b.time.length; i++) {
-    const t = Math.floor(b.time[i]! / (tfSec * 1000)) * tfSec * 1000;
-    const k = out.time.length - 1;
-    if (k >= 0 && out.time[k] === t) {
-      out.high[k] = Math.max(out.high[k]!, b.high[i]!);
-      out.low[k] = Math.min(out.low[k]!, b.low[i]!);
-      out.close[k] = b.close[i]!;
-      out.volume[k]! += b.volume[i]!;
-    } else {
-      out.time.push(t);
-      out.open.push(b.open[i]!);
-      out.high.push(b.high[i]!);
-      out.low.push(b.low[i]!);
-      out.close.push(b.close[i]!);
-      out.volume.push(b.volume[i]!);
-    }
-  }
-  return {
-    time: Float64Array.from(out.time),
-    open: Float64Array.from(out.open),
-    high: Float64Array.from(out.high),
-    low: Float64Array.from(out.low),
-    close: Float64Array.from(out.close),
-    volume: Float64Array.from(out.volume),
-    tfSec,
-    symbol: b.symbol,
-    lastRealtime: false,
-  };
 }
