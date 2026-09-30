@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeBarColors, plotPoints, priceDigits, seriesKind, shapeMarkers } from "../src/chart/render";
+import { mergeBarColors, plotPoints, priceAxisFormat, priceDigits, seriesKind, shapeMarkers } from "../src/chart/render";
 import type { PlotOut, ShapeOut } from "../src/pine/types";
 
 const plot = (over: Partial<PlotOut>): PlotOut => ({
@@ -47,5 +47,11 @@ describe("çizim dönüşümleri", () => {
     ]);
     expect(mergeBarColors([["#FF0000FF", null], [null, "#0000FFFF"]], 2)).toEqual(["rgba(255, 0, 0, 1)", "rgba(0, 0, 255, 1)"]);
     expect([priceDigits(112000), priceDigits(210.3), priceDigits(22.4), priceDigits(2.87), priceDigits(0.241)]).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it("fiyat ekseninde eksi etiket yok", () => {
+    const f = priceAxisFormat(1);
+    expect([f.formatter(-10000), f.formatter(0), f.formatter(83821.54)]).toEqual(["", "0.0", "83821.5"]);
+    expect(f.minMove).toBeCloseTo(0.1, 12);
   });
 });

@@ -29,6 +29,7 @@ import {
   fmtNum,
   mergeBarColors,
   plotPoints,
+  priceAxisFormat,
   priceDigits,
   seriesKind,
   shapeMarkers,
@@ -209,7 +210,7 @@ export function ChartView({ bars, viewKey, theme, indicators, header, renderCont
       : Array.from(bars.time, (t) => toChartTime(t));
     const prev = lastShape.current;
     const digits = priceDigits(bars.close[n - 1]!);
-    candle.applyOptions({ priceFormat: { type: "price", precision: digits, minMove: Math.pow(10, -digits) } });
+    candle.applyOptions({ priceFormat: priceAxisFormat(digits) });
     const candleAt = (i: number) => {
       const c = barColors?.[i];
       const base = { time: times[i] as UTCTimestamp, open: bars.open[i]!, high: bars.high[i]!, low: bars.low[i]!, close: bars.close[i]! };

@@ -144,6 +144,15 @@ export function priceDigits(price: number): number {
   return Math.min(8, 4 - Math.floor(Math.log10(p)));
 }
 
+/** Fiyat ekseni biçimi: mumların altındaki boşlukta çıkan eksi etiketler gizlenir (fiyat eksi olamaz). */
+export function priceAxisFormat(digits: number) {
+  return {
+    type: "custom" as const,
+    minMove: Math.pow(10, -digits),
+    formatter: (p: number) => (p < 0 ? "" : p.toFixed(digits)),
+  };
+}
+
 export function fmtNum(v: number | undefined | null, digits = 2): string {
   if (v === undefined || v === null || Number.isNaN(v)) return "—";
   return v.toLocaleString("tr-TR", { minimumFractionDigits: digits, maximumFractionDigits: digits });
