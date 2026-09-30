@@ -25,10 +25,12 @@ export interface Window {
   to: number;
 }
 
-export const WINDOWS: Record<"back" | "dev" | "val" | "final", Window> = {
+export const WINDOWS: Record<"back" | "dev" | "val" | "dev2" | "final", Window> = {
   back: { key: "back", name: "Geriye dönük yedek sınav", from: dayStart("2024-09-15"), to: dayEnd("2025-03-31") },
   dev: { key: "dev", name: "Geliştirme", from: dayStart("2025-04-01"), to: dayEnd("2026-03-31") },
   val: { key: "val", name: "Doğrulama", from: dayStart("2026-04-01"), to: dayEnd("2026-06-30") },
+  /** 2. aşama geliştirme: eski geliştirme + doğrulama (doğrulamaya bir kez bakıldı; bkz. değişiklik kaydı). */
+  dev2: { key: "dev2", name: "Geliştirme (15 ay)", from: dayStart("2025-04-01"), to: dayEnd("2026-06-30") },
   final: { key: "final", name: "Son sınav", from: dayStart("2026-07-01"), to: dayEnd("2026-09-29") },
 };
 
@@ -63,6 +65,11 @@ export const CRITERIA = {
  *             ayda ~7-10 olduğundan son sınavdaki "coin başına ≥ 80 işlem" ve coin bazında kazanma alt sınırı
  *             (≈25 işlemde gürültü) kaldırıldı; coin bazında alt sınır, istatistik gücü yeten görülmemiş
  *             coinler × tüm dönem sınavına taşındı (holdout). Geliştirme aday şartı 150 → 50 işlem/coin.
+ * 2026-09-30  Doğrulama (bakış 1): UT Bot Pro kuralı tutmadı (%63,3 kazanma, −%0,254/işlem). Kullanıcı isteği:
+ *             UT Bot'a bağlı kalmadan 15 dk'da serbest arama. Doğrulama dönemi görüldüğü için geliştirmeye katıldı
+ *             (dev2: 2025-04 → 2026-06, 15 ay, 5 çeyrek). Dokunulmamış sınavlar aynen: son sınav (2026-07 → 09),
+ *             görülmemiş coinler (XRP/BNB/DOGE, tüm dönem), geriye dönük dönem ve yedek coinler; son sınav 1 bakış.
+ *             Seçim ölçütü: 5 çeyreğin ve analiz coinlerinin hepsinde tutarlılık (en iyi ortalama değil).
  */
 
 export const LOOKS = { val: 2, final: 1, reserveRetry: 1 };

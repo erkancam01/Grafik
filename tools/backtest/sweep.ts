@@ -1,7 +1,7 @@
 /**
  * Ayar taraması: bir "spec" dosyasındaki ızgarayı coinler üzerinde paralel koşar, coin/çeyrek ölçütlerini yazar.
  * Kullanım: npm run bt:sweep -- tools/backtest/specs/<ad>.ts [--look val]
- * Yalnız geliştirme dönemi serbesttir; doğrulama `--look val` ister ve bakış kaydına yazılır (protocol.ts: LOOKS).
+ * Geliştirme dönemleri (dev, dev2) serbesttir; doğrulama `--look val` ister ve bakış kaydına yazılır (protocol.ts: LOOKS).
  * Son sınav bu araçla açılmaz (final.ts).
  */
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
@@ -15,7 +15,7 @@ export interface Spec {
   /** Kök dizine göre .pine yolu. */
   script: string;
   coins: string[];
-  window: "dev" | "val";
+  window: "dev" | "dev2" | "val";
   base?: Record<string, unknown>;
   /** Kartezyen çarpım; anahtarlar girdi başlıkları. */
   grid?: Record<string, unknown[]>;
@@ -113,12 +113,12 @@ async function main(): Promise<void> {
   if (!file) throw new Error("kullanım: sweep.ts <spec.ts> [--look val]");
   const spec = ((await import(resolve(file))) as { default: Spec }).default;
   const win = WINDOWS[spec.window];
-  if (spec.window !== "dev" && !args.includes(`--look`)) throw new Error(`${win.name} dönemi yalnız --look ${spec.window} ile açılır (bakış hakkı sınırlı)`);
+  if (spec.window === "val" && !args.includes(`--look`)) throw new Error(`${win.name} dönemi yalnız --look ${spec.window} ile açılır (bakış hakkı sınırlı)`);
   const cfgs = (spec.configs ?? expand(spec.grid ?? {})).filter((c) => !spec.where || spec.where({ ...spec.base, ...c }));
   const pool = new Pool();
   const outDir = `${ROOT}.cache/results`;
   mkdirSync(outDir, { recursive: true });
-  if (spec.window !== "dev") appendFileSync(`${outDir}/looks.log`, `${new Date().toISOString()} ${spec.name} ${spec.window} ${cfgs.length} ayar\n`);
+  if (spec.window === "val") appendFileSync(`${outDir}/looks.log`, `${new Date().toISOString()} ${spec.name} ${spec.window} ${cfgs.length} ayar\n`);
   console.log(`${spec.name}: ${cfgs.length} ayar × ${spec.coins.length} coin, ${win.name}, ${pool.size} işçi`);
   const t0 = Date.now();
   let done = 0;
