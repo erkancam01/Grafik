@@ -1,0 +1,12 @@
+//@version=5
+indicator("RSI", overlay = false, precision = 2)
+len = input.int(14, "Uzunluk", minval = 1)
+src = input.source(close, "Kaynak")
+ob  = input.int(70, "Aşırı alım", minval = 50, maxval = 100)
+os  = input.int(30, "Aşırı satım", minval = 0, maxval = 50)
+r = ta.rsi(src, len)
+plot(r, "RSI", color = #7E57C2, linewidth = 2)
+hline(ob, "Aşırı alım", color = color.new(color.red, 30))
+hline(50, "Orta", color = color.new(color.gray, 50), linestyle = hline.style_dotted)
+hline(os, "Aşırı satım", color = color.new(color.green, 30))
+bgcolor(r > ob ? color.new(color.red, 90) : r < os ? color.new(color.green, 90) : na)

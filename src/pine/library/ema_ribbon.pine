@@ -1,0 +1,9 @@
+//@version=5
+indicator("EMA 20/50/200", overlay = true)
+l1  = input.int(20, "EMA 1", minval = 1)
+l2  = input.int(50, "EMA 2", minval = 1)
+l3  = input.int(200, "EMA 3", minval = 1)
+src = input.source(close, "Kaynak")
+plot(ta.ema(src, l1), "EMA 1", color = #F7A600)
+plot(ta.ema(src, l2), "EMA 2", color = #2962FF)
+plot(ta.ema(src, l3), "EMA 3", color = #E91E63, linewidth = 2)

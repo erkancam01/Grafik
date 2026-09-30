@@ -1,0 +1,9 @@
+//@version=5
+indicator("Bollinger Bantları", shorttitle = "BB", overlay = true)
+len  = input.int(20, "Uzunluk", minval = 1)
+mult = input.float(2.0, "Standart sapma", minval = 0.1, step = 0.1)
+src  = input.source(close, "Kaynak")
+[basis, upper, lower] = ta.bb(src, len, mult)
+plot(basis, "Orta", color = #FF6D00)
+plot(upper, "Üst", color = #2962FF)
+plot(lower, "Alt", color = #2962FF)
