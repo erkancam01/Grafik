@@ -1,0 +1,65 @@
+//@version=5
+// Trend Avcısı Strateji (15 dk) — günlük trend yönünde kanal kırılımıyla girip trendi iz süren stopla sürer.
+// Kural (15 dk verisinin analizinden; bkz. tools/backtest/strategy_lab.py): fiyat günlük EMA50'nin üstündeyken
+// kapanış son 192 mumun (2 gün) en yükseğini aşarsa long, altındayken en düşüğünün altına inerse short; sonraki
+// mumun açılışında girilir. Zarar kes: giriş ∓ 3 × 1 saatlik ATR. Kâr al yok: iz süren stop işlem boyunca görülen
+// en iyi fiyatın 5 × ATR gerisinde (her mum kapanışında güncellenir, yalnız lehe kayar). En çok 10 gün.
+// Kazanma oranı düşüktür (~%35-40): çok sayıda küçük zarar, az sayıda büyük kazanç.
+// Varsayılan: 1000 USDT, her işlemde özsermayenin %100'ü, komisyon %0,05 (Binance vadeli piyasa emri).
+// Hepsi Ayarlar → Strateji özellikleri'nden değiştirilebilir. Grafik 15 dk olmalı.
+strategy("Trend Avcısı Strateji (15 dk)", shorttitle = "Trend Avcısı S", overlay = true, initial_capital = 1000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100, commission_type = strategy.commission.percent, commission_value = 0.05)
+
+trendTf  = input.timeframe("D", "Trend zaman dilimi", group = "Trend")
+trendLen = input.int(50, "Trend EMA", minval = 1, group = "Trend")
+chLen    = input.int(192, "Kanal uzunluğu (mum)", minval = 2, group = "Giriş", tooltip = "15 dk grafikte 192 mum = 2 gün")
+yon      = input.string("Her ikisi", "İşlem yönü", options = ["Her ikisi", "Yalnız long", "Yalnız short"], group = "Giriş")
+atrTf    = input.timeframe("60", "ATR zaman dilimi", group = "Çıkış")
+slK      = input.float(3, "Zarar kes (ATR katı)", minval = 0.1, step = 0.25, group = "Çıkış")
+trK      = input.float(5, "İz süren stop (ATR katı)", minval = 0.1, step = 0.25, group = "Çıkış")
+maxBars  = input.int(960, "En uzun süre (mum, 0 = sınırsız)", minval = 0, group = "Çıkış", tooltip = "15 dk grafikte 960 mum = 10 gün")
+
+// Üst zaman dilimleri: kapanmış mum (bakış-ileri yok)
+emaT = request.security(syminfo.tickerid, trendTf, ta.ema(close, trendLen), lookahead = barmerge.lookahead_off)
+atrH = request.security(syminfo.tickerid, atrTf, ta.atr(14), lookahead = barmerge.lookahead_off)
+hh   = ta.highest(high, chLen)[1]
+ll   = ta.lowest(low, chLen)[1]
+
+flat    = strategy.position_size == 0
+ready   = not na(atrH) and not na(emaT) and not na(hh)
+goLong  = flat and ready and close > hh and close > emaT and yon != "Yalnız short"
+goShort = flat and ready and close < ll and close < emaT and yon != "Yalnız long"
+
+var float atrE = na
+if goLong
+    atrE := atrH
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Çıkış L", "Long", loss = slK * atrH / syminfo.mintick, comment = "Stop")
+if goShort
+    atrE := atrH
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Çıkış S", "Short", loss = slK * atrH / syminfo.mintick, comment = "Stop")
+
+// Pozisyondayken (mum kapanışında): en iyi fiyat ve iz süren stop; yeni seviye sonraki mumdan geçerli
+pos = strategy.position_size
+var float best = na
+var float stp = na
+if pos != 0
+    eb = strategy.opentrades.entry_bar_index(0)
+    ep = strategy.position_avg_price
+    if bar_index == eb
+        best := pos > 0 ? high : low
+        stp := pos > 0 ? ep - slK * atrE : ep + slK * atrE
+    else
+        best := pos > 0 ? math.max(best, high) : math.min(best, low)
+    stp := pos > 0 ? math.max(stp, best - trK * atrE) : math.min(stp, best + trK * atrE)
+    if pos > 0
+        strategy.exit("Çıkış L", "Long", stop = stp, comment = "Stop")
+    else
+        strategy.exit("Çıkış S", "Short", stop = stp, comment = "Stop")
+    if maxBars > 0 and bar_index - eb + 1 >= maxBars
+        strategy.close_all(comment = "Süre")
+
+plot(hh, "Kanal üst", color = color.new(color.gray, 50))
+plot(ll, "Kanal alt", color = color.new(color.gray, 50))
+plot(emaT, "Trend EMA (günlük)", color = color.orange, linewidth = 2)
+plot(pos != 0 ? stp : na, "İz süren stop", color = color.red, style = plot.style_linebr)

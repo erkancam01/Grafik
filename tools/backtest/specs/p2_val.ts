@@ -1,13 +1,12 @@
-/** Doğrulama (bakış 1/2): dondurulmuş ayar (frozen.json), 2026-04 → 2026-06, geliştirme coinleri. */
-import frozen from "../frozen.json";
+/** Doğrulama (bakış 1/2): o anda dondurulmuş UT Bot Pro kuralı, 2026-04 → 2026-06, geliştirme coinleri. Sonuç: tutmadı. */
 import { DEV_COINS } from "../protocol";
 import type { Spec } from "../sweep";
 
 export default {
   name: "p2_val",
-  script: frozen.script,
+  script: "src/pine/library/ut_bot_pro_strategy.pine",
   coins: DEV_COINS,
   window: "val",
-  tf: frozen.tf,
-  configs: [frozen.inputs],
+  tf: 900,
+  configs: [{}],
 } satisfies Spec;

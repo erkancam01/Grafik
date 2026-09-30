@@ -17,6 +17,8 @@ interface Frozen {
   inputs: Record<string, unknown>;
   /** Grafik zaman dilimi, saniye (varsayılan 300). */
   tf?: number;
+  /** Test başından önce yüklenen gün (günlük trend göstergeleri için). */
+  warmupDays?: number;
   note?: string;
 }
 
@@ -91,8 +93,12 @@ function resolveAmb(symbol: string, t: Trade, tf: number): "doğru" | "yanlış"
 
 // ------------------------------------------------------------------ koşu
 
+let WARMUP: number | undefined;
+
 async function runSet(pool: Pool, script: string, inputs: Record<string, unknown>, coins: string[], w: Window, comm: number, tf: number) {
-  const res = await Promise.all(coins.map((symbol) => pool.run({ script: `${ROOT}${script}`, symbol, from: w.from, to: w.to, inputs, comm, tf })));
+  const res = await Promise.all(
+    coins.map((symbol) => pool.run({ script: `${ROOT}${script}`, symbol, from: w.from, to: w.to, inputs, comm, tf, warmupDays: WARMUP })),
+  );
   return Object.fromEntries(coins.map((c, k) => [c, res[k]!.trades])) as Record<string, Trade[]>;
 }
 
@@ -128,18 +134,17 @@ function table(title: string, per: Record<string, Trade[]>, withFunding = false)
 function verdict(pooled: Stats, coins: Record<string, Stats>, holdout: boolean): string[] {
   const C = holdout ? CRITERIA.holdout : CRITERIA.final;
   const cs = Object.values(coins);
-  const checks: [string, boolean][] = [
-    [`Toplam kazanma ≥ %${C.pooledWinRate} (${f(pooled.winRate, 1)})`, pooled.winRate >= C.pooledWinRate],
+  const checks: [string, boolean][] = [];
+  if (C.pooledWinRate !== undefined) checks.push([`Toplam kazanma ≥ %${C.pooledWinRate} (${f(pooled.winRate, 1)})`, pooled.winRate >= C.pooledWinRate]);
+  checks.push(
     [`Toplam ort. işlem > %${C.pooledAvgRet} (${f(pooled.avgRet, 3)})`, pooled.avgRet > C.pooledAvgRet],
     [`Toplam PF > ${C.pooledPf} (${f(pooled.pf)})`, pooled.pf > C.pooledPf],
-  ];
-  if (holdout) {
-    const H = CRITERIA.holdout;
-    checks.push(
-      [`Her coinde kazanma ≥ %${H.perCoinWinRate} (en düşük ${f(Math.min(...cs.map((s) => s.winRate)), 1)})`, cs.every((s) => s.winRate >= H.perCoinWinRate)],
-      [`PF > 1 en az ${H.pfCoins}/${cs.length} coinde (${cs.filter((s) => s.pf > 1).length})`, cs.filter((s) => s.pf > 1).length >= H.pfCoins],
-    );
-  }
+  );
+  if (C.perCoinWinRate !== undefined)
+    checks.push([`Her coinde kazanma ≥ %${C.perCoinWinRate} (en düşük ${f(Math.min(...cs.map((s) => s.winRate)), 1)})`, cs.every((s) => s.winRate >= C.perCoinWinRate!)]);
+  if (C.pfCoins !== undefined)
+    checks.push([`PF > 1 en az ${C.pfCoins}/${cs.length} coinde (${cs.filter((s) => s.pf > 1).length})`, cs.filter((s) => s.pf > 1).length >= C.pfCoins]);
+  checks.push([`Bilgi: toplam kazanma oranı %${f(pooled.winRate, 1)}`, true]);
   return checks.map(([t, ok]) => `- ${ok ? "✅" : "❌"} ${t}`);
 }
 
@@ -153,6 +158,7 @@ async function main(): Promise<void> {
   appendFileSync(`${outDir}/looks.log`, `${new Date().toISOString()} final.ts ${w.key} ${coins.join(",")} ${frozenPath}\n`);
   const pool = new Pool();
   const tf = frozen.tf ?? 300;
+  WARMUP = frozen.warmupDays;
   const md: string[] = [
     `# ${w.name}: ${new Date(w.from).toISOString()} → ${new Date(w.to).toISOString()}`,
     "",

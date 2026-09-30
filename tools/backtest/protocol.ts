@@ -48,11 +48,20 @@ export const STRESS_COMMISSION = 0.065;
 /** Göstergelerin ısınması için test başından önce yüklenen gün (uygulamada 300 mum + 400 üst zaman dilimi mumu). */
 export const WARMUP_DAYS = 30;
 
-export const CRITERIA = {
-  /** Son sınav: son 3 ay × 6 coinin toplamı (coin başına ~20-30 işlem: coin sonuçları bilgi amaçlı). */
-  final: { pooledWinRate: 70, pooledAvgRet: 0, pooledPf: 1 },
-  /** Görülmemiş coinler (XRP/BNB/DOGE) × tüm veri dönemi: coin bazında da yeterli işlem var. */
-  holdout: { pooledWinRate: 70, perCoinWinRate: 65, pooledAvgRet: 0, pooledPf: 1, pfCoins: 2 },
+export interface Criteria {
+  /** Toplam kazanma oranı alt sınırı (yoksa yalnız raporlanır). */
+  pooledWinRate?: number;
+  perCoinWinRate?: number;
+  pooledAvgRet: number;
+  pooledPf: number;
+  pfCoins?: number;
+}
+
+export const CRITERIA: { final: Criteria; holdout: Criteria; dev: { pooledWinRate: number; perCoinWinRate: number; minTradesPerCoin: number } } = {
+  /** Son sınav: son 3 ay × 6 coinin toplamı (coin sonuçları bilgi amaçlı). Kâr hedefli (bkz. değişiklik kaydı). */
+  final: { pooledAvgRet: 0, pooledPf: 1 },
+  /** Görülmemiş coinler (XRP/BNB/DOGE) × tüm veri dönemi. */
+  holdout: { pooledAvgRet: 0, pooledPf: 1, pfCoins: 2 },
   /** Geliştirmede aday sayılma şartı (son sınavdaki düşüşe pay). */
   dev: { pooledWinRate: 73, perCoinWinRate: 66, minTradesPerCoin: 50 },
 };
@@ -70,6 +79,11 @@ export const CRITERIA = {
  *             (dev2: 2025-04 → 2026-06, 15 ay, 5 çeyrek). Dokunulmamış sınavlar aynen: son sınav (2026-07 → 09),
  *             görülmemiş coinler (XRP/BNB/DOGE, tüm dönem), geriye dönük dönem ve yedek coinler; son sınav 1 bakış.
  *             Seçim ölçütü: 5 çeyreğin ve analiz coinlerinin hepsinde tutarlılık (en iyi ortalama değil).
+ * 2026-09-30  Laboratuvar (strategy_lab.py, 8 aile): %70+ kazanma veren her yapı komisyon sonrası eksi ya da
+ *             kararsız; tutarlı kâr eden tek aile trend takibi (~%37 kazanma). Kullanıcı "15 dk'da en mükemmel
+ *             strateji, her şey serbest" dedi → hedef kâr ve tutarlılık. Son sınav ölçütleri: toplam ort. işlem > 0
+ *             ve PF > 1; görülmemiş coinlerde ayrıca 3 coinin en az 2'sinde PF > 1. Kazanma oranı raporlanır.
+ *             Dondurulan: Trend Avcısı (frozen.json, varsayılan ayarlar). Son sınav 1 bakış.
  */
 
 export const LOOKS = { val: 2, final: 1, reserveRetry: 1 };

@@ -1,6 +1,7 @@
 {
-  "script": "src/pine/library/ut_bot_pro_strategy.pine",
+  "script": "src/pine/library/trend_avcisi_strategy.pine",
   "tf": 900,
+  "warmupDays": 120,
   "inputs": {},
-  "note": "Analizden çıkan kural, varsayılan ayarlar (anahtar değer 1, ATR 10, momentum eşiği 3, kâr al 1 / zarar kes 2 × 1s ATR, en çok 96 mum). Doğrulama ve son sınavdan önce donduruldu (2026-09-30)."
+  "note": "Trend Avcısı, varsayılan ayarlar (günlük EMA50 yönü, 192 mum kanal kırılımı, zarar kes 3 / iz süren stop 5 × 1s ATR, en çok 960 mum). Laboratuvardan seçildi; son sınavdan önce donduruldu (2026-09-30). Önceki dondurma (UT Bot Pro) doğrulamada tutmadı."
 }
