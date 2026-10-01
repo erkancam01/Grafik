@@ -1,5 +1,5 @@
 /**
- * Gerçek Binance verisiyle (önbellek: .cache/bars, bkz. tools/backtest) Trend Avcısı Strateji'yi uygulamada çalıştırır:
+ * Gerçek Binance verisiyle (önbellek: .cache/bars, bkz. tools/backtest) Trend Avcısı ve Rejim stratejilerini uygulamada çalıştırır:
  * Binance uçları önbellekteki mumlarla yanıtlanır, saat verinin sonuna sabitlenir, tarih kutuları İstanbul saatiyle.
  * Uygulamanın gösterdiği işlem ve kazanan sayısı, deneme düzeneğinin "uygulama gibi yükle" hesabıyla aynı olmalı.
  * Yalnız BT_REAL=1 ile çalışır (CI'da atlanır). Ekran görüntüleri: e2e/screenshots/gercek-*.png
@@ -54,13 +54,17 @@ async function mockReal(page: Page) {
   await page.routeWebSocket(/fstream\.binance\.com/, (ws) => ws.close());
 }
 
+const TA = { id: "trend_avcisi_strategy", title: "Trend Avcısı", file: "trend_avcisi_strategy.pine", tf: "15m" };
+const RJ = { id: "rejim_strategy", title: "Rejim", file: "rejim_strategy.pine", tf: "1d" };
 const CASES = [
-  { sym: "BTCUSDT", pick: null, from: "2026-07-01", to: "2026-09-29", name: "btc-son-sinav" },
-  { sym: "DOGEUSDT", pick: /^DOGE\/USDT/, from: "2025-05-01", to: "2026-09-29", name: "doge-gorulmemis" },
+  { s: TA, sym: "BTCUSDT", pick: null, from: "2026-07-01", to: "2026-09-29", name: "btc-son-sinav" },
+  { s: TA, sym: "DOGEUSDT", pick: /^DOGE\/USDT/, from: "2025-05-01", to: "2026-09-29", name: "doge-gorulmemis" },
+  { s: RJ, sym: "BTCUSDT", pick: null, from: "2025-01-01", to: "2026-09-29", name: "rejim-btc" },
+  { s: RJ, sym: "SOLUSDT", pick: /^SOL\/USDT/, from: "2025-01-01", to: "2026-09-29", name: "rejim-sol" },
 ];
 
 for (const c of CASES) {
-  test(`gerçek veri: Trend Avcısı ${c.sym} ${c.from} → ${c.to}, düzenekle aynı sonuç`, async ({ page }, info) => {
+  test(`gerçek veri: ${c.s.title} ${c.sym} ${c.from} → ${c.to}, düzenekle aynı sonuç`, async ({ page }, info) => {
     await page.clock.setFixedTime(NOW);
     await mockReal(page);
     await page.goto("/");
@@ -70,26 +74,26 @@ for (const c of CASES) {
       await page.getByTestId("symbol-search").fill(c.sym.replace("USDT", "").toLowerCase());
       await page.getByTestId("symbol-list").getByRole("button", { name: c.pick }).click();
     }
-    await page.getByTestId("tf-15m").click();
+    await page.getByTestId(`tf-${c.s.tf}`).click();
     await expect(page.getByTestId("chart-header")).toContainText(c.sym);
-    await expect(page.getByTestId("chart-header")).toContainText("15m");
+    await expect(page.getByTestId("chart-header")).toContainText(c.s.tf === "1d" ? "1D" : c.s.tf);
     await page.getByRole("button", { name: "UT Bot Alerts kaldır" }).click();
     await page.getByTestId("indicators-button").click();
-    await page.getByTestId("add-trend_avcisi_strategy").click();
+    await page.getByTestId(`add-${c.s.id}`).click();
     const strip = page.getByTestId("strategy-strip");
-    await expect(strip).toContainText("Trend Avcısı");
+    await expect(strip).toContainText(c.s.title);
     await strip.click();
     const sheet = page.getByTestId("strategy-sheet");
     await sheet.getByTestId("range-from").fill(c.from);
     await sheet.getByTestId("range-to").fill(c.to);
 
     const exp = new Runner().run({
-      script: `${ROOT}src/pine/library/trend_avcisi_strategy.pine`,
+      script: `${ROOT}src/pine/library/${c.s.file}`,
       symbol: c.sym,
       from: dayStart(c.from),
       to: dayEnd(c.to),
       inputs: {},
-      tf: 900,
+      tf: SEC[c.s.tf],
       appLike: { now: NOW },
     });
     const n = exp.trades.length;

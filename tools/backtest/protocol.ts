@@ -120,6 +120,13 @@ export const CRITERIA: { final: Criteria; holdout: Criteria; dev: { pooledWinRat
  *             Rejim çalışması (R_STUDY, aşağıda) sonuçlara bakılmadan önce yazıldı. Veri daha önce görüldüğü için
  *             koruma ayrı sınav dönemi değil, ileriye doğru yürüyen seçimdir: her yıl yalnız önceki yıllarda kapanmış
  *             işlemlerle seçim yapılır; yöntem, ölçütler ve kural evreni çalıştırmadan önce sabit.
+ * 2026-10-01  R_STUDY (tek çalıştırma) — ANA MODEL GEÇTİ (zayıf). Coin rejimi, örneklem dışı 2021-01 → 2026-09: 1079
+ *             işlem, kazanma %70,6, +55,1 bps (t +1,5), PF 1,12; yıllar +51 / +27 / +168 / +181 / +320 / −350 bps (5/6
+ *             artı); PF > 1 coin 11/15; fonlama dahil +53,4 bps. İkincil: BTC rejimi 770 işlem %70,9 +169 bps (t +4,5);
+ *             rejimsiz 429 işlem %74,8 +174 bps (t +3,1). Denetim (rastgele kurallar): −19 / −64 / +16 bps, hiçbiri
+ *             geçmedi. Güncel seçim (eğitim 2026 dahil) Pine'a çevrildi: src/pine/library/rejim_strategy.pine ve
+ *             rejim.pine; motor ↔ laboratuvar 2021-2026: 695 / 667 işlem, +%2,77 / +%2,80 (örneklem içi, iyimser).
+ *             Uygulamada gerçek veriyle BTC ve SOL 2025-01 → 2026-09 düzenekle aynı (e2e/real.spec.ts).
  */
 
 /**
@@ -183,6 +190,7 @@ export const T_CHECK = {
  * Tek çalıştırma; geçerse güncel seçim (tüm veriyle) Pine'a çevrilir ve motorla doğrulanır.
  */
 export const R_STUDY = {
+  window: { key: "rall", name: "Rejim çalışması test yılları", from: dayStart("2021-01-01"), to: dayEnd("2026-09-29") } as Window,
   testYears: [2021, 2022, 2023, 2024, 2025, 2026],
   select: { minTrades: 60, winRate: 72, score: "ortalamanın %95 alt sınırı > 0" },
   criteria: { pooledWinRate: 70, pooledAvgRet: 0, pooledPf: 1, pfCoins: 10, yearsPositive: 4 },

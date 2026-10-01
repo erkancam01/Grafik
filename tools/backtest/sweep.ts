@@ -8,15 +8,15 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { quarterOf, ROOT, stats, type JobResult, type Stats, type Trade } from "./lib";
 import { Pool } from "./pool";
-import { CRITERIA, L_STUDY, WINDOWS } from "./protocol";
+import { CRITERIA, L_STUDY, R_STUDY, WINDOWS } from "./protocol";
 
 export interface Spec {
   name: string;
   /** Kök dizine göre .pine yolu. */
   script: string;
   coins: string[];
-  /** "ldev": uzun geçmiş çalışmasının geliştirme dönemi (protocol.ts L_STUDY.dev; data: "15m" gerekir). */
-  window: "dev" | "dev2" | "val" | "ldev";
+  /** "ldev": uzun geçmiş geliştirme dönemi (L_STUDY.dev); "rall": rejim çalışmasının test yılları (R_STUDY.window). İkisi de data: "15m". */
+  window: "dev" | "dev2" | "val" | "ldev" | "rall";
   base?: Record<string, unknown>;
   /** Kartezyen çarpım; anahtarlar girdi başlıkları. */
   grid?: Record<string, unknown[]>;
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
   const file = args.find((a) => !a.startsWith("--"));
   if (!file) throw new Error("kullanım: sweep.ts <spec.ts> [--look val]");
   const spec = ((await import(resolve(file))) as { default: Spec }).default;
-  const win = spec.window === "ldev" ? L_STUDY.dev : WINDOWS[spec.window];
+  const win = spec.window === "ldev" ? L_STUDY.dev : spec.window === "rall" ? R_STUDY.window : WINDOWS[spec.window];
   if (spec.window === "val" && !args.includes(`--look`)) throw new Error(`${win.name} dönemi yalnız --look ${spec.window} ile açılır (bakış hakkı sınırlı)`);
   const cfgs = (spec.configs ?? expand(spec.grid ?? {})).filter((c) => !spec.where || spec.where({ ...spec.base, ...c }));
   const pool = new Pool();

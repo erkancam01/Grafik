@@ -24,8 +24,8 @@ yeterli (ör. **UT Bot Alerts**). `strategy()` betikleri **Strateji Test Aracı*
 
 ## Strateji testi (backtest)
 
-- Kütüphaneden **UT Bot Strateji**, **EMA Trend 4s Strateji (bot sistemi)** ya da **Trend Avcısı Strateji (15 dk)**
-  ekle, veya TradingView'daki bir stratejinin kodunu yapıştır. Grafiğin altında özet şeridi çıkar (net kâr %, işlem sayısı, kârlı oran, düşüş).
+- Kütüphaneden **UT Bot Strateji**, **EMA Trend 4s Strateji (bot sistemi)**, **Rejim Strateji (günlük)** ya da
+  **Trend Avcısı Strateji (15 dk)** ekle, veya TradingView'daki bir stratejinin kodunu yapıştır. Grafiğin altında özet şeridi çıkar (net kâr %, işlem sayısı, kârlı oran, düşüş).
 - Şeride dokun → **Strateji Test Aracı**: *Özet* (net kâr, kâr faktörü, maks. düşüş, al-ve-tut karşılaştırması,
   özsermaye eğrisi, Tümü/Long/Short tablosu) ve *İşlemler* (her işlem; dokununca grafikte o işleme gider).
   Emirler grafikte ok olarak görünür.
@@ -41,6 +41,56 @@ yeterli (ör. **UT Bot Alerts**). `strategy()` betikleri **Strateji Test Aracı*
   stop/limit emirleri mum içinde (açılış → yüksek/düşük → kapanış varsayımı, boşlukta açılıştan). Teminat,
   likidasyon ve fonlama ücreti hesaba katılmaz. `?demo` verisi yapay (düzgün dalgalar) olduğundan oradaki
   strateji sonuçları anlamsızdır; gerçek sonuç için Binance verisiyle kullan.
+
+## Rejim (günlük) — rejime göre kural, ileriye doğru yürüyen testle seçildi
+
+Kütüphanede gösterge (**Rejim**: arka plan rengi yükseliş yeşil / düşüş kırmızı / yatay gri; Al/Sat/Çık etiketleri,
+kâr al / zarar kes çizgileri, alarmlar) ve backtest sürümü (**Rejim Strateji**) olarak var; ikisi aynı işlemleri verir
+(testte denetlenir). Grafik **1 gün** olmalı.
+
+- **Rejim** (mum kapanışında, `ta.dmi(14, 14)` ve EMA50): yükseliş = kapanış > EMA50, +DI > −DI, ADX > 20; düşüş =
+  kapanış < EMA50, −DI > +DI, ADX > 20; yatay = diğerleri.
+- **Kurallar** (girişler sonraki mumun açılışında; kâr al / zarar kes sinyal mumundaki ATR14'ün katı; en çok 20 gün;
+  pozisyon varken yeni giriş yok):
+
+| Rejim | Kural | Kâr al / zarar kes |
+|---|---|---|
+| Yükseliş | UT Bot (anahtar 2) "Sat" verince **al** (geri çekilmede alım) | 0,5 / 2 × ATR |
+| Düşüş | RSI14 < 30 ise **al**, > 70 ise sat (aşırılıktan dönüş) | 1 / 2,5 × ATR |
+| Yatay | UT Bot (anahtar 3) "Al" verince **al** | 1,5 / 3 × ATR |
+
+- **Nasıl bulundu:** "%70 kazanma her yerde çıkıyorsa, şu an hangi trendde olduğunu bulup ona göre strateji" fikri,
+  2020-2026 verisinde (15 coin) **ileriye doğru yürüyen testle** sınandı (`tools/backtest/regime_study.py`). Her yılın
+  başında, yalnız o güne kadar kapanmış işlemlere bakılarak, her rejim için 2268 kuraldan (1 s / 4 s / 1 g × 18 olay
+  × devam/ters × 7 kâr al/zarar kes × yön) en sağlamı seçildi ve o yıl uygulandı. Ölçütler çalıştırmadan önce
+  `protocol.ts`'e (R_STUDY) yazıldı. Yukarıdaki kurallar aynı yöntemin bugünkü (2026-09 sonuna kadarki veriyle) seçimidir.
+- **Sonuç — örneklem dışı** (her yıl yalnız geçmişe bakarak; komisyon %0,05/taraf sonrası):
+
+| Yıl | İşlem | Kazanma | İşlem başına | Kâr faktörü |
+|---|---|---|---|---|
+| 2021 | 375 | %67,5 | +%0,51 | 1,09 |
+| 2022 | 294 | %72,8 | +%0,27 | 1,06 |
+| 2023 | 105 | %79,0 | +%1,68 | 1,69 |
+| 2024 | 107 | %77,6 | +%1,81 | 1,62 |
+| 2025 | 97 | %77,3 | +%3,20 | 2,40 |
+| 2026 (Oca-Eyl) | 101 | %53,5 | **−%3,50** | 0,45 |
+| **2021-2026** | **1079** | **%70,6** | **+%0,55** | **1,12** |
+
+  Önceden yazılan ölçütleri geçti (kazanma ≥ %70, ort. > 0, PF > 1, 6 yılın 5'i artı, 15 coinin 11'inde PF > 1), ama
+  **istatistiksel gücü zayıf** (t = 1,5) ve 2026 zararlı. Fonlama ücreti küçük (işlem başına ~%0,02). Aynı yöntem
+  rastgele girişli kurallara uygulanınca kâr çıkmadı (−%0,19); yani sonuç yöntemin kendisinden gelmiyor. BTC'nin
+  rejimine göre seçim (+%1,69, 770 işlem) ve rejimsiz seçim (+%1,74, 429 işlem) de artıda, onlar da 2026'da zararlı.
+- **Rejimlere göre** (2023-2026, bugünkü türden kurallar): yükseliş 97 işlem, %86,6 kazanma, +%1,50, dört yılın dördü
+  artı; düşüş 189 işlem, %70,4, +%1,06 ama 2026'da −%5,2 (zararın kaynağı); yatay 124 işlem, %62,9, −%0,16 (zayıf).
+  Ayarlardan her rejim ayrı ayrı kapatılabilir.
+- **Bugün (2026-09-29):** 15 coinin 13'ü yükseliş rejiminde (TRX yatay), yani etkin kural yükseliş kuralı.
+- **Uygulamada örnek** (Strateji Test Aracı, 2025-01-01 → 2026-09-29, gerçek veri): SOL 16 işlem, %68,8 kazanma,
+  net +%27,6 (al-ve-tut −%37,1), maks. düşüş %36; BTC 19 işlem, %63,2 kazanma, net −%8,2 (al-ve-tut −%10,6).
+  Coin ve dönem kısaldıkça sonuç çok değişir.
+- **Risk:** günlük grafikte zarar kes 2-3 × ATR, tek işlemde %10-30 kayıp demek; özsermayenin %100'ü ile düşüş
+  büyüktür (örneklem dışında coin başına en büyük düşüş medyanı %68), daha küçük emir büyüklüğü kullan. Bugünkü
+  kurallar 2021-2026'nın tamamıyla seçildiği için o dönemdeki sonucu (motorla 695 işlem, %78, +%2,77) iyimserdir;
+  beklenti için yukarıdaki örneklem dışı tablo esas alınmalı. Geçmiş sonuç gelecek garantisi değildir.
 
 ## Trend Avcısı (15 dk) — araştırma stratejisi (uzun geçmişte tutmadı)
 
@@ -80,13 +130,14 @@ Kütüphanede gösterge (**Trend Avcısı**: Al/Sat/Çık etiketleri, iz süren 
 | Günlük Momentum (sert mum) | 1 gün | 15 coin, 2023-01 → 2024-08 | 308 | %71,8 | −%0,07 |
 | Günlük Momentum | 1 gün | 15 coin, 2024-09 → 2026-09 | 401 | %77,8 | +%0,97 |
 | Trend Avcısı | 15 dk | 15 coin, 2020-01 → 2024-08 | 6304 | %34,4 | −%0,12 |
+| **Rejim** (ileriye yürüyen seçim) | 1 gün | 15 coin, 2021-01 → 2026-09, her yıl yalnız geçmişe bakarak | 1079 | %70,6 | +%0,55 |
 
   %70+ kazanma her grafikte ve görülmemiş veride de çıkıyor, çünkü kâr al küçük, zarar kes büyük seçiliyor (rastgele
   girişte bile ~%75). Ama kâr sağlam değil: aynı kural bir dönemde artı, başka dönemde eksi. Günlük grafikte her
   işlemde sermayenin tamamıyla coin başına en büyük düşüş medyanı %35-42. 5 dk'da UT Bot sinyallerinin, 15 dk'da 12
   ek özelliğin (hacim, alıcı baskısı, fonlama, saat, oynaklık…) rastgele girişe göre tutarlı üstünlüğü yok; 1 saatte
-  aday çıkmadı. Sonuç: basit grafik kurallarıyla Binance vadelide (%0,05 komisyon) 2020-2026 boyunca tutarlı kâr eden
-  bir kural bulunamadı.
+  aday çıkmadı. Sonuç: tek bir sabit kural 2020-2026 boyunca tutarlı kâr etmedi. Rejime göre kural seçen yöntem
+  (yukarıda **Rejim**) ileriye yürüyen testte ölçütleri geçti, ama zayıf ve 2026'da zararlı.
 - **Yöntem ve yeniden üretim:** `tools/backtest/` (aşağıda). Veri ayrımı ve kabul ölçütleri sonuçlardan önce
   `tools/backtest/protocol.ts`'te sabitlendi, her değişiklik orada kayıtlı; son sınav bir kez açıldı.
 
@@ -160,6 +211,8 @@ python3 tools/backtest/long_study.py                # 2020-2022 taraması: 15 dk
 npm run bt:final -- --frozen tools/backtest/frozen_4h.json --study-h   # 4 s sınavı
 npm run bt:final -- --frozen tools/backtest/frozen_1d.json --study-l   # uzun geçmiş sınavları
 npm run bt:final -- --study-t                       # Trend Avcısı, 2020-01 → 2024-08
+python3 tools/backtest/regime_study.py              # rejim çalışması: ileriye doğru yürüyen test (2021-2026)
+npm run bt:sweep -- tools/backtest/specs/r1_rejim.ts  # Rejim Strateji, motorla 2021-2026 (laboratuvarla eşleşme)
 BT_REAL=1 npx playwright test e2e/real.spec.ts      # uygulamada gerçek veriyle aynı sonuç + ekran görüntüsü
 ```
 

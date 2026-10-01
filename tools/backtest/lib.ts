@@ -189,12 +189,21 @@ function collect(out: PineOutput, b: BarsData, inputs: Record<string, unknown>):
   const tpK = num(out, inputs, "Kâr al (ATR katı)");
   const slK = num(out, inputs, "Zarar kes (ATR katı)");
   const bePct = num(out, inputs, "Başa baş payı (%)");
+  // Rejim stratejisi gibi kural başına farklı katsayılarda: girişte sabitlenen mesafeler doğrudan çizilir
+  const tpDist = out.plots.find((p) => p.title === "Kâr al mesafesi")?.values;
+  const slDist = out.plots.find((p) => p.title === "Zarar kes mesafesi")?.values;
   const trades = s.trades.map((t): Trade => {
     let amb = false;
     let tp = Number.NaN;
     let sl = Number.NaN;
     const k = t.exitBar - 1; // çıkış mumunda geçerli seviyeler bir önceki mum kapanışında belirlenmiştir
-    if (atrPlot && k >= 0 && (t.exitComment === "TP" || t.exitComment === "SL" || t.exitComment === "BE")) {
+    if (tpDist && slDist && k >= 0 && (t.exitComment === "TP" || t.exitComment === "SL")) {
+      tp = t.entryPrice + t.dir * tpDist[k]!;
+      sl = t.entryPrice - t.dir * slDist[k]!;
+      const hi = b.high[t.exitBar]!;
+      const lo = b.low[t.exitBar]!;
+      amb = t.dir > 0 ? lo <= sl && hi >= tp : hi >= sl && lo <= tp;
+    } else if (atrPlot && k >= 0 && (t.exitComment === "TP" || t.exitComment === "SL" || t.exitComment === "BE")) {
       const atr = atrPlot[k]!;
       const d = t.dir;
       tp = t.entryPrice + d * tpK * atr;
