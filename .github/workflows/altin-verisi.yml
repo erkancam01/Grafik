@@ -1,0 +1,40 @@
+# Altın verisi (araştırma için; uygulama kullanmaz): Binance'in herkese açık arşivinden (data.binance.vision) altın
+# sözleşmelerinin 15 dk mumları ve fonlama oranları indirilir, tetikleyen dala data/altin/ altına commit edilir.
+# Geliştirme ortamından Binance'e erişilemediği için veri GitHub sunucusunda indirilir. main'de çalışmaz.
+# Kullanım: Actions → "Altın verisi" → Run workflow (bir özellik dalında), ya da bu dosya / fetch_gold.py değişince.
+name: Altın verisi
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["ccr-**", "claude/**"]
+    paths: [".github/workflows/altin-verisi.yml", "tools/backtest/fetch_gold.py"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: altin-verisi-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  download:
+    if: github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Kurulum
+        run: pip install pandas pyarrow requests
+      - name: Arşivden indir
+        run: python tools/backtest/fetch_gold.py
+      - name: Dala yaz
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/altin
+          git commit -q -m "Altın verisi: $(date -u +%F) (data.binance.vision)" || { echo "değişiklik yok"; exit 0; }
+          git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
