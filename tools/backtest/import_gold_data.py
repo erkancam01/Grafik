@@ -20,7 +20,7 @@ COLS = ["open", "high", "low", "close", "volume"]
 
 
 def write_bars(df: pd.DataFrame, path: Path) -> None:
-    t = (df.index.asi8 // 1_000_000).astype("float64")  # ns → ms
+    t = df.index.as_unit("ms").asi8.astype("float64")  # dizinin çözünürlüğü ne olursa olsun ms
     with path.open("wb") as f:
         for c in [t] + [df[c].to_numpy(dtype="float64") for c in COLS]:
             f.write(c.astype("<f8").tobytes())
@@ -44,7 +44,7 @@ def main() -> int:
         fp = src / f"{sym}_funding.parquet"
         if market == "vadeli" and fp.exists():
             fr = pd.read_parquet(fp).sort_index()
-            fund = [[int(ts.value // 1_000_000), float(r)] for ts, r in fr["funding_rate"].items()]
+            fund = [[int(ms), float(r)] for ms, r in zip(fr.index.as_unit("ms").asi8, fr["funding_rate"])]
         (OUT / f"{key}_funding.json").write_text(json.dumps(fund))
         big = df.index.to_series().diff()[gaps]
         print(f"{key}: {len(df)} mum, {df.index[0]} → {df.index[-1]}, boşluk {int(gaps.sum())}"

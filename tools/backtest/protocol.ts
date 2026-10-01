@@ -129,6 +129,15 @@ export const CRITERIA: { final: Criteria; holdout: Criteria; dev: { pooledWinRat
  *             Uygulamada gerçek veriyle BTC ve SOL 2025-01 → 2026-09 düzenekle aynı (e2e/real.spec.ts).
  * 2026-10-01  Kullanıcı: "sadece altın için çalışır mısın". Altın çalışması (G_STUDY, aşağıda) altın verisi gelmeden
  *             ve hiçbir sonuca bakılmadan önce yazıldı.
+ * 2026-10-01  Altın verisi (kapsam): spot PAXGUSDT 2020-08 → 2026-09 (en uzun seri → ana sınav), vadeli PAXGUSDT
+ *             2025-03 →, XAUUSDT 2025-12 →, XAUTUSDT 2026-03 →. İlk Test A denemesi içe aktarıcıdaki zaman birimi
+ *             hatası (ms çözünürlüklü dizin) yüzünden sonuç üretmeden çöktü; düzeltilip bir kez çalıştırıldı.
+ *             Test A — spot PAXG 2021-01 → 2026-09: 51 işlem, kazanma %76,5, +%0,034/işlem, PF 1,03 (ölçütler geçti,
+ *             fiilen başa baş); yıllar 2021-2025 artı, 2026: 10 işlem %40 −%2,76. Bilgi: XAUUSDT 2026-04 → 09 4 işlem
+ *             %25 −%2,92; vadeli PAXGUSDT 2025-07 → 2026-09 11 işlem %54,5 −%1,81.
+ *             Test B — GEÇMEDİ. Yalnız altınla ileriye yürüyen seçim (coin rejimi): 567 işlem, %76,9, −7,8 bps (t −2,0),
+ *             PF 0,76, 6 yılın 1'i artı; rejimsiz: 677 işlem, %84,2, +0,8 bps. Rastgele kurallarla aynı yöntem −3,0 /
+ *             −4,2 bps: tek enstrümanda seçim gürültüden ayrılamıyor (rastgele kurallar da seçiliyor).
  */
 
 /**

@@ -84,6 +84,10 @@ kâr al / zarar kes çizgileri, alarmlar) ve backtest sürümü (**Rejim Stratej
   artı; düşüş 189 işlem, %70,4, +%1,06 ama 2026'da −%5,2 (zararın kaynağı); yatay 124 işlem, %62,9, −%0,16 (zayıf).
   Ayarlardan her rejim ayrı ayrı kapatılabilir.
 - **Bugün (2026-09-29):** 15 coinin 13'ü yükseliş rejiminde (TRX yatay), yani etkin kural yükseliş kuralı.
+- **Altında** (ayarlar değiştirilmeden; altın seçimde hiç kullanılmadı): spot PAXGUSDT (altına bağlı token)
+  2021-01 → 2026-09, 51 işlem, %76,5 kazanma, işlem başına +%0,03 (fiilen başa baş). 2021-2025'in her yılı artı,
+  2026'da 10 işlem, %40 kazanma, −%2,8. Yılda ~9 sinyal. Yalnız altın verisiyle yapılan kural seçimi tutmadı
+  (rastgele kurallardan farksız; `regime_study.py --coins SPOT-PAXGUSDT --tag altin`).
 - **Uygulamada örnek** (Strateji Test Aracı, 2025-01-01 → 2026-09-29, gerçek veri): SOL 16 işlem, %68,8 kazanma,
   net +%27,6 (al-ve-tut −%37,1), maks. düşüş %36; BTC 19 işlem, %63,2 kazanma, net −%8,2 (al-ve-tut −%10,6).
   Coin ve dönem kısaldıkça sonuç çok değişir.
@@ -212,6 +216,10 @@ npm run bt:final -- --frozen tools/backtest/frozen_4h.json --study-h   # 4 s sı
 npm run bt:final -- --frozen tools/backtest/frozen_1d.json --study-l   # uzun geçmiş sınavları
 npm run bt:final -- --study-t                       # Trend Avcısı, 2020-01 → 2024-08
 python3 tools/backtest/regime_study.py              # rejim çalışması: ileriye doğru yürüyen test (2021-2026)
+# altın: .github/workflows/altin-verisi.yml (GitHub'da indirir, dala data/altin/ yazar) → içe aktar → sınavlar
+python3 tools/backtest/import_gold_data.py          # data/altin → .cache/bars (SPOT-PAXGUSDT, XAUUSDT, …)
+npm run bt:final -- --study-g --coins SPOT-PAXGUSDT,XAUUSDT,PAXGUSDT   # Rejim Strateji altında
+python3 tools/backtest/regime_study.py --coins SPOT-PAXGUSDT --tag altin --min-trades 40
 npm run bt:sweep -- tools/backtest/specs/r1_rejim.ts  # Rejim Strateji, motorla 2021-2026 (laboratuvarla eşleşme)
 BT_REAL=1 npx playwright test e2e/real.spec.ts      # uygulamada gerçek veriyle aynı sonuç + ekran görüntüsü
 ```
