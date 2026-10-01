@@ -127,6 +127,8 @@ export const CRITERIA: { final: Criteria; holdout: Criteria; dev: { pooledWinRat
  *             geçmedi. Güncel seçim (eğitim 2026 dahil) Pine'a çevrildi: src/pine/library/rejim_strategy.pine ve
  *             rejim.pine; motor ↔ laboratuvar 2021-2026: 695 / 667 işlem, +%2,77 / +%2,80 (örneklem içi, iyimser).
  *             Uygulamada gerçek veriyle BTC ve SOL 2025-01 → 2026-09 düzenekle aynı (e2e/real.spec.ts).
+ * 2026-10-01  Kullanıcı: "sadece altın için çalışır mısın". Altın çalışması (G_STUDY, aşağıda) altın verisi gelmeden
+ *             ve hiçbir sonuca bakılmadan önce yazıldı.
  */
 
 /**
@@ -194,6 +196,24 @@ export const R_STUDY = {
   testYears: [2021, 2022, 2023, 2024, 2025, 2026],
   select: { minTrades: 60, winRate: 72, score: "ortalamanın %95 alt sınırı > 0" },
   criteria: { pooledWinRate: 70, pooledAvgRet: 0, pooledPf: 1, pfCoins: 10, yearsPositive: 4 },
+};
+
+/**
+ * Altın çalışması (2026-10-01, kullanıcı: "sadece altın için çalışır mısın") — sonuçlara bakılmadan önce yazıldı.
+ * Veri: fetch_gold.py (data.binance.vision, 15 dk; vadeli XAUUSDT / PAXGUSDT / XAUTUSDT, spot PAXGUSDT; arşivde hangisi
+ * varsa), import_gold_data.py. Altın kripto çalışmalarının hiçbirinde kullanılmadı.
+ *   Test A (tek bakış): kütüphanedeki Rejim Strateji, ayarlarına dokunmadan, günlük grafikte: en uzun geçmişli altın
+ *   serisinde (kapsam raporuna göre, getiriye bakılmadan seçilir) 2021-01 → 2026-09 ve vadeli XAUUSDT'nin (varsa) tüm
+ *   geçmişinde. Kabul: kazanma ≥ %70, ort. işlem > 0, PF > 1 (en uzun seride).
+ *   Test B (tek çalıştırma): regime_study.py --coins <en uzun seri> --tag altin --min-trades 40: yalnız altınla ileriye
+ *   doğru yürüyen seçim (2021-2026) ve rastgele denetim. Kabul: R_STUDY ile aynı (kazanma ≥ %70, ort. > 0, PF > 1,
+ *   6 yılın ≥ 4'ünde ort. > 0).
+ *   Komisyon %0,05/taraf (Binance vadeli piyasa emri); spot PAXG'de taker %0,1 olduğu not edilir.
+ */
+export const G_STUDY = {
+  window: { key: "gall", name: "Altın: test yılları", from: dayStart("2021-01-01"), to: dayEnd("2026-09-29") } as Window,
+  criteria: { pooledWinRate: 70, pooledAvgRet: 0, pooledPf: 1 } as Criteria,
+  walkForward: { minTrades: 40, yearsPositive: 4 },
 };
 
 export const LOOKS = { val: 2, final: 1, reserveRetry: 1 };

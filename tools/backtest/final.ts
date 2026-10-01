@@ -10,7 +10,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { BARS_DIR, bootstrapAvgRet, loadBars, lowerBound, ROOT, stats, wilson, type Stats, type Trade } from "./lib";
 import { Pool } from "./pool";
-import { COMMISSION, CRITERIA, DEV_COINS, H_STUDY, HOLDOUT_COINS, L_STUDY, RESERVE_COINS, STRESS_COMMISSION, T_CHECK, WINDOWS, type Criteria, type Window } from "./protocol";
+import { COMMISSION, CRITERIA, DEV_COINS, G_STUDY, H_STUDY, HOLDOUT_COINS, L_STUDY, RESERVE_COINS, STRESS_COMMISSION, T_CHECK, WINDOWS, type Criteria, type Window } from "./protocol";
 
 interface Frozen {
   script: string;
@@ -283,9 +283,49 @@ async function studyT(frozen: Frozen, frozenPath: string, outDir: string): Promi
   console.log(`\nrapor: ${file}`);
 }
 
+/** Altın çalışması Test A (protocol.ts G_STUDY): kütüphanedeki Rejim Strateji ayarlarına dokunmadan altın serilerinde. */
+async function studyG(outDir: string): Promise<void> {
+  const coins = (arg("coins") ?? "").split(",").filter(Boolean);
+  if (!coins.length) throw new Error("--coins gerekli (ilk sıradaki seri kabul ölçütüne tabi)");
+  const script = "src/pine/library/rejim_strategy.pine";
+  WARMUP = 120;
+  DATA = "15m";
+  appendFileSync(`${outDir}/looks.log`, `${new Date().toISOString()} final.ts G_STUDY Test A ${coins.join(",")}\n`);
+  const pool = new Pool();
+  const md: string[] = ["# Altın — Test A: Rejim Strateji (varsayılan ayarlar), günlük grafik", ""];
+  for (const [k, sym] of coins.entries()) {
+    const bars = loadBars(sym, "15m");
+    const first = bars.time[0]! + (WARMUP ?? 0) * 86_400_000;
+    const w: Window = { ...G_STUDY.window, from: Math.max(G_STUDY.window.from, first), to: Math.min(G_STUDY.window.to, bars.time[bars.time.length - 1]!) };
+    const day = (x: number) => new Date(x + 3 * 3_600_000).toISOString().slice(0, 10);
+    const res = await runSet(pool, script, {}, [sym], w, COMMISSION, 86400);
+    const T = table(`${sym}: ${day(w.from)} → ${day(w.to)}, komisyon %${COMMISSION}/taraf`, res, true);
+    md.push(T.md, "", equityLine(res), "");
+    const years: Record<string, Trade[]> = {};
+    for (const t of res[sym]!) (years[new Date(t.entryTime + 3 * 3_600_000).getUTCFullYear()] ||= []).push(t);
+    md.push("| Yıl | İşlem | Kazanma % | Ort. işlem % | PF |", "|---|---|---|---|---|");
+    for (const [y, ts] of Object.entries(years).sort()) {
+      const st = stats(ts);
+      md.push(`| ${y} | ${st.n} | ${f(st.winRate, 1)} | ${f(st.avgRet, 3)} | ${f(st.pf)} |`);
+    }
+    md.push("", k === 0 ? "**Kabul (en uzun seri):**" : "Kabul ölçütleri (bilgi):", ...verdict(T.pooled, T.coins, false, G_STUDY.criteria), "");
+  }
+  await pool.close();
+  const text = md.join("\n");
+  const file = `${outDir}/final-gstudy-${Date.now()}.md`;
+  writeFileSync(file, text + "\n");
+  console.log(text);
+  console.log(`\nrapor: ${file}`);
+}
+
 async function main(): Promise<void> {
   const frozenPath = arg("frozen") ?? "tools/backtest/frozen.json";
   const frozen = JSON.parse(readFileSync(`${ROOT}${frozenPath}`, "utf8")) as Frozen;
+  if (process.argv.includes("--study-g")) {
+    const outDirG = `${ROOT}.cache/results`;
+    mkdirSync(outDirG, { recursive: true });
+    return studyG(outDirG);
+  }
   if (process.argv.includes("--study-t")) {
     const outDirT = `${ROOT}.cache/results`;
     mkdirSync(outDirT, { recursive: true });
