@@ -44,7 +44,7 @@ jobs:
             git -C kayit checkout -q --orphan yeni-kayit
             git -C kayit rm -rfq .
           fi
-      - name: Haftalık yorum
+      - name: Yapay zekâ puanı
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: node --import jiti/register tools/ai/yorumcu.ts --kayit kayit/ai/yorumlar.json ${{ env.YAZ != 'true' && '--deneme' || '' }}

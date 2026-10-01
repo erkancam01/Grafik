@@ -179,7 +179,7 @@ export function rapor(k: Kayit, olaylar: Olay[]): string {
         `- Model: ${a.model}; ${a.arama} arama; ${a.girdiToken} + ${a.ciktiToken} token; ~$${a.maliyet.toFixed(2)}`,
         "",
       );
-    } else satir.push(`- Yapay zekâ yorumu yok: ${e.aiHata ?? "—"}`, "");
+    } else satir.push(`- Yapay zekâ puanı yok: ${e.aiHata ?? "—"}`, "");
   }
   if (!olaylar.length) satir.push("Bugün yeni sinyal yok.", "");
   const d = (x: (typeof p.tf)["1d"]["duz"]) =>
