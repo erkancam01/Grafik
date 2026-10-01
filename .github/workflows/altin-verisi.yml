@@ -1,13 +1,14 @@
 # Altın verisi (araştırma için; uygulama kullanmaz): Binance'in herkese açık arşivinden (data.binance.vision) altın
 # sözleşmelerinin 15 dk mumları ve fonlama oranları indirilir, tetikleyen dala data/altin/ altına commit edilir.
-# Geliştirme ortamından Binance'e erişilemediği için veri GitHub sunucusunda indirilir. main'de çalışmaz.
-# Kullanım: Actions → "Altın verisi" → Run workflow (bir özellik dalında), ya da bu dosya / fetch_gold.py değişince.
+# Geliştirme ortamından Binance'e erişilemediği için veri GitHub sunucusunda indirilir. Yalnız araştırma dallarında
+# (ccr-*) kendiliğinden çalışır; main'de ve canlı sitenin dalında çalışmaz.
+# Kullanım: Actions → "Altın verisi" → Run workflow (bir araştırma dalında), ya da bu dosya / fetch_gold.py değişince.
 name: Altın verisi
 
 on:
   workflow_dispatch:
   push:
-    branches: ["ccr-**", "claude/**"]
+    branches: ["ccr-**"]
     paths: [".github/workflows/altin-verisi.yml", "tools/backtest/fetch_gold.py"]
 
 permissions:
@@ -19,7 +20,7 @@ concurrency:
 
 jobs:
   download:
-    if: github.ref != 'refs/heads/main'
+    if: startsWith(github.ref, 'refs/heads/ccr-')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
