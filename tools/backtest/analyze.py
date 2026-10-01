@@ -25,7 +25,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 BARS = ROOT / ".cache" / "bars"
 TF = sys.argv[sys.argv.index("--tf") + 1] if "--tf" in sys.argv else "5m"
-TF_SEC = {"5m": 300, "15m": 900}[TF]
+TF_SEC = {"5m": 300, "15m": 900, "1h": 3600, "4h": 14400}[TF]
 OUT = ROOT / ".cache" / "results" / f"analysis_{TF}.md"
 COINS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BCHUSDT", "DOTUSDT", "ETCUSDT", "TRXUSDT", "XLMUSDT"]
 IST = 3 * 3_600_000

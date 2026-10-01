@@ -1,0 +1,7 @@
+{
+  "script": "src/pine/library/momentum_4s_strategy.pine",
+  "tf": 14400,
+  "warmupDays": 60,
+  "inputs": {},
+  "note": "Momentum 4s, varsayılan ayarlar (gövde > 2 × ATR14 ya da RSI14 > 80 / < 20 → aynı yönde, kâr al 1 / zarar kes 2,5 × ATR14, en çok 42 mum). htf_study.py + htf_momentum.py'den seçildi; asıl sınavlardan önce donduruldu (2026-10-01)."
+}

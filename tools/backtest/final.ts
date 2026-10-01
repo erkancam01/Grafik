@@ -10,7 +10,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { BARS_DIR, bootstrapAvgRet, loadBars, lowerBound, ROOT, stats, wilson, type Stats, type Trade } from "./lib";
 import { Pool } from "./pool";
-import { COMMISSION, CRITERIA, DEV_COINS, HOLDOUT_COINS, STRESS_COMMISSION, WINDOWS, type Window } from "./protocol";
+import { COMMISSION, CRITERIA, DEV_COINS, H_STUDY, HOLDOUT_COINS, RESERVE_COINS, STRESS_COMMISSION, WINDOWS, type Criteria, type Window } from "./protocol";
 
 interface Frozen {
   script: string;
@@ -131,8 +131,8 @@ function table(title: string, per: Record<string, Trade[]>, withFunding = false)
   return { md: rows.join("\n"), pooled: p, coins };
 }
 
-function verdict(pooled: Stats, coins: Record<string, Stats>, holdout: boolean): string[] {
-  const C = holdout ? CRITERIA.holdout : CRITERIA.final;
+function verdict(pooled: Stats, coins: Record<string, Stats>, holdout: boolean, crit?: Criteria): string[] {
+  const C = crit ?? (holdout ? CRITERIA.holdout : CRITERIA.final);
   const cs = Object.values(coins);
   const checks: [string, boolean][] = [];
   if (C.pooledWinRate !== undefined) checks.push([`Toplam kazanma ≥ %${C.pooledWinRate} (${f(pooled.winRate, 1)})`, pooled.winRate >= C.pooledWinRate]);
@@ -148,9 +148,56 @@ function verdict(pooled: Stats, coins: Record<string, Stats>, holdout: boolean):
   return checks.map(([t, ok]) => `- ${ok ? "✅" : "❌"} ${t}`);
 }
 
+/** 1 saat / 4 saat çalışması (protocol.ts H_STUDY): asıl sınavlar hiç dokunulmamış verilerde, bir kez. */
+async function studyH(frozen: Frozen, frozenPath: string, outDir: string): Promise<void> {
+  const tf = frozen.tf ?? 3600;
+  WARMUP = frozen.warmupDays;
+  appendFileSync(`${outDir}/looks.log`, `${new Date().toISOString()} final.ts H_STUDY ${frozenPath}\n`);
+  const pool = new Pool();
+  const md: string[] = [
+    `# 1s/4s çalışması — asıl sınavlar (hiç dokunulmamış veri), grafik ${tf / 3600} saat`,
+    "",
+    `Betik: \`${frozen.script}\``,
+    "",
+    "Ayar: `" + JSON.stringify(frozen.inputs) + "`" + (frozen.note ? ` — ${frozen.note}` : ""),
+    "",
+  ];
+  const day = (w: Window) => `${new Date(w.from).toISOString().slice(0, 10)} → ${new Date(w.to).toISOString().slice(0, 10)}`;
+  const tests: [string, string[], Window][] = [
+    [`Asıl sınav 1: yedek coinler × ${day(H_STUDY.all)}`, RESERVE_COINS, H_STUDY.all],
+    [`Asıl sınav 2: analiz coinleri × ${day(H_STUDY.back)}`, H_STUDY.analysisCoins, H_STUDY.back],
+  ];
+  for (const [title, coins, w] of tests) {
+    const res = await runSet(pool, frozen.script, frozen.inputs, coins, w, COMMISSION, tf);
+    const T = table(`${title}, komisyon %${COMMISSION}/taraf`, res, true);
+    md.push(T.md, "", "**Kabul:**", ...verdict(T.pooled, T.coins, false, H_STUDY.criteria), "");
+    const amb = { doğru: 0, yanlış: 0, çözülemez: 0 };
+    for (const [sym, ts] of Object.entries(res)) for (const t of ts) if (t.amb) amb[resolveAmb(sym, t, tf)]++;
+    md.push(`Belirsiz çıkışlar (1 dk ile): motor doğru ${amb.doğru}, yanlış ${amb.yanlış}, çözülemez ${amb.çözülemez}.`, "");
+    const st = await runSet(pool, frozen.script, frozen.inputs, coins, w, STRESS_COMMISSION, tf);
+    md.push(table(`Stres (%${STRESS_COMMISSION}/taraf): ${title}`, st).md, "");
+  }
+  md.push("## İkincil (daha önce Trend Avcısı için bir kez görülmüş veriler)", "");
+  const fin = await runSet(pool, frozen.script, frozen.inputs, [...DEV_COINS, ...HOLDOUT_COINS], WINDOWS.final, COMMISSION, tf);
+  md.push(table(`Son sınav dönemi × 6 coin (${day(WINDOWS.final)})`, fin, true).md, "");
+  const hold = await runSet(pool, frozen.script, frozen.inputs, HOLDOUT_COINS, H_STUDY.all, COMMISSION, tf);
+  md.push(table(`XRP/BNB/DOGE × ${day(H_STUDY.all)}`, hold, true).md, "");
+  await pool.close();
+  const text = md.join("\n");
+  const file = `${outDir}/final-hstudy-${Date.now()}.md`;
+  writeFileSync(file, text + "\n");
+  console.log(text);
+  console.log(`\nrapor: ${file}`);
+}
+
 async function main(): Promise<void> {
   const frozenPath = arg("frozen") ?? "tools/backtest/frozen.json";
   const frozen = JSON.parse(readFileSync(`${ROOT}${frozenPath}`, "utf8")) as Frozen;
+  if (process.argv.includes("--study-h")) {
+    const outDirH = `${ROOT}.cache/results`;
+    mkdirSync(outDirH, { recursive: true });
+    return studyH(frozen, frozenPath, outDirH);
+  }
   const w = WINDOWS[(arg("window") ?? "final") as keyof typeof WINDOWS];
   const coins = arg("coins")?.split(",") ?? [...DEV_COINS, ...HOLDOUT_COINS];
   const outDir = `${ROOT}.cache/results`;

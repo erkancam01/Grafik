@@ -89,6 +89,10 @@ export const CRITERIA: { final: Criteria; holdout: Criteria; dev: { pooledWinRat
  * 2026-10-01  Kullanıcı: 1 saat / 4 saat dene. H_STUDY (yukarıda) sonuçlara bakılmadan önce yazıldı: geliştirme dev2 ×
  *             analiz coinleri; asıl sınavlar yedek coinler (ADA/AVAX/LINK/LTC) × 2024-11 → 2026-09 ve analiz
  *             coinleri × 2024-11 → 2025-03 (hiç kullanılmadı), bir bakış; hedef kullanıcının asıl hedefi (%70 + kâr).
+ * 2026-10-01  1 saatte aday çıkmadı (htf_study.py). 4 saatte sert mum / RSI aşırılığı sonrası aynı yönde kısa hedef
+ *             (htf_study.py, htf_momentum.py) → Momentum 4s Strateji; motorla dev2 × 8 analiz coini: 511 işlem,
+ *             %77,3 kazanma, +%0,377/işlem, PF 1,30, 5 çeyreğin hepsi artı. Asıl sınavlardan önce donduruldu:
+ *             frozen_4h.json (varsayılan ayarlar). Sınav: final.ts --study-h, bir bakış.
  */
 
 /**
