@@ -34,6 +34,8 @@ export const WINDOWS: Record<"back" | "dev" | "val" | "dev2" | "final", Window> 
   final: { key: "final", name: "Son sınav", from: dayStart("2026-07-01"), to: dayEnd("2026-09-29") },
 };
 
+
+
 /** Ayarların arandığı coinler. */
 export const DEV_COINS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
 /** Hiç optimize edilmeyen coinler: yalnız son sınavda (tüm dönem) açılır. */
@@ -84,6 +86,23 @@ export const CRITERIA: { final: Criteria; holdout: Criteria; dev: { pooledWinRat
  *             strateji, her şey serbest" dedi → hedef kâr ve tutarlılık. Son sınav ölçütleri: toplam ort. işlem > 0
  *             ve PF > 1; görülmemiş coinlerde ayrıca 3 coinin en az 2'sinde PF > 1. Kazanma oranı raporlanır.
  *             Dondurulan: Trend Avcısı (frozen.json, varsayılan ayarlar). Son sınav 1 bakış.
+ * 2026-10-01  Kullanıcı: 1 saat / 4 saat dene. H_STUDY (yukarıda) sonuçlara bakılmadan önce yazıldı: geliştirme dev2 ×
+ *             analiz coinleri; asıl sınavlar yedek coinler (ADA/AVAX/LINK/LTC) × 2024-11 → 2026-09 ve analiz
+ *             coinleri × 2024-11 → 2025-03 (hiç kullanılmadı), bir bakış; hedef kullanıcının asıl hedefi (%70 + kâr).
  */
+
+/**
+ * 1 saat / 4 saat çalışması (2026-10-01, kullanıcı: "dene"). Geliştirme: dev2 × analiz coinleri. Asıl sınavlar hiç
+ * dokunulmamış verilerde ve bir kez: yedek coinler × tüm dönem, analiz coinleri × geriye dönük dönem. Son sınav dönemi
+ * ve XRP/BNB/DOGE daha önce Trend Avcısı için bir kez görüldü → yalnız ikincil rapor.
+ */
+export const H_STUDY = {
+  dev: { key: "dev2", name: "Geliştirme (15 ay)", from: dayStart("2025-04-01"), to: dayEnd("2026-06-30") } as Window,
+  back: { key: "back2", name: "Geriye dönük sınav", from: dayStart("2024-11-01"), to: dayEnd("2025-03-31") } as Window,
+  all: { key: "all2", name: "Tüm dönem", from: dayStart("2024-11-01"), to: dayEnd("2026-09-29") } as Window,
+  analysisCoins: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BCHUSDT", "DOTUSDT", "ETCUSDT", "TRXUSDT", "XLMUSDT"],
+  /** Kabul (asıl sınavların ikisinde de): toplam kazanma ≥ %70, ort. işlem > 0, PF > 1. Tutmazsa en iyi kârlı seçenek raporlanır. */
+  criteria: { pooledWinRate: 70, pooledAvgRet: 0, pooledPf: 1 } as Criteria,
+};
 
 export const LOOKS = { val: 2, final: 1, reserveRetry: 1 };
