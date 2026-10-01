@@ -4,7 +4,7 @@ import type { Spec } from "../sweep";
 
 export default {
   name: "m1_dev2",
-  script: "src/pine/library/momentum_4s_strategy.pine",
+  script: "tools/backtest/pine/momentum_4s_strategy.pine",
   coins: H_STUDY.analysisCoins,
   window: "dev2",
   tf: 14400,

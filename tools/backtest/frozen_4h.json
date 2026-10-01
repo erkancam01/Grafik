@@ -1,5 +1,5 @@
 {
-  "script": "src/pine/library/momentum_4s_strategy.pine",
+  "script": "tools/backtest/pine/momentum_4s_strategy.pine",
   "tf": 14400,
   "warmupDays": 60,
   "inputs": {},

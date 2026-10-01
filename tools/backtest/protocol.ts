@@ -93,6 +93,11 @@ export const CRITERIA: { final: Criteria; holdout: Criteria; dev: { pooledWinRat
  *             (htf_study.py, htf_momentum.py) → Momentum 4s Strateji; motorla dev2 × 8 analiz coini: 511 işlem,
  *             %77,3 kazanma, +%0,377/işlem, PF 1,30, 5 çeyreğin hepsi artı. Asıl sınavlardan önce donduruldu:
  *             frozen_4h.json (varsayılan ayarlar). Sınav: final.ts --study-h, bir bakış.
+ * 2026-10-01  Asıl sınav (bakış 1) — TUTMADI. Yedek coinler × 2024-11 → 2026-09: 377 işlem, kazanma %74,5, −%0,044/işlem,
+ *             PF 0,98. Analiz coinleri × 2024-11 → 2025-03: 180 işlem, %68,3, −%0,950, PF 0,68. İkincil: son sınav
+ *             dönemi × 6 coin %85,0 / +%0,650 (107 işlem); XRP/BNB/DOGE × tüm dönem %74,1 / +%0,070 (317 işlem).
+ *             Sonuç: yüksek kazanma oranı görülmemiş veride de sürüyor (TP/SL geometrisi), kâr sürmüyor. Strateji
+ *             tools/backtest/pine/'a arşivlendi; kütüphaneye eklenmedi.
  */
 
 /**

@@ -1,4 +1,6 @@
 //@version=5
+// ARŞİV — asıl sınavı geçemedi (2026-10-01, final.ts --study-h): hiç görülmemiş veride kazanma %74,5 / %68,3 ama
+// işlem başına −%0,04 / −%0,95 (bkz. tools/backtest/protocol.ts değişiklik kaydı). Kütüphanede yok.
 // Momentum 4s Strateji — 4 saatlik grafikte güçlü momentumdan sonra aynı yönde kısa hedefli işlem.
 // Kural (4 saatlik verinin analizinden; bkz. tools/backtest/htf_study.py, htf_momentum.py): mum gövdesi önceki mumun
 // ATR14 değerinin 2 katını aşarsa mum yönünde, aşmazsa RSI14 80'in üstündeyse long / 20'nin altındaysa short sinyali;
