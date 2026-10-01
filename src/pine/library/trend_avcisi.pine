@@ -4,6 +4,7 @@
 // sinyal mumu kapanınca sonraki mumun açılışında giriş ("Al" / "Sat"), zarar kes giriş ∓ 3 × 1 saatlik ATR, sonra
 // en iyi fiyatın 5 × ATR gerisinde iz süren stop (mum kapanışında güncellenir), stop dokununca "Çık", en çok 10 gün.
 // Pozisyon varken yeni sinyal verilmez. Kazanma oranı düşüktür (~%35-40): kâr, az sayıda büyük trendden gelir.
+// Uyarı: hiç görmediği 2020-01 → 2024-08'de (15 coin, 6304 işlem) zarar etti: işlem başına −%0,12, PF 0,95 (bkz. README).
 indicator("Trend Avcısı (15 dk)", shorttitle = "Trend Avcısı", overlay = true)
 
 trendTf  = input.timeframe("D", "Trend zaman dilimi", group = "Trend")

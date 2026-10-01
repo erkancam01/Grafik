@@ -26,7 +26,7 @@ export const LIBRARY: LibraryItem[] = [
   { id: "trend_avcisi", name: "Trend Avcısı (15 dk)", description: "Günlük trend yönünde 2 günlük kanal kırılımı, iz süren stop; Al/Sat/Çık ve alarmlar", code: trendAvcisi },
   { id: "ut_bot_strategy", name: "UT Bot Strateji", description: "Backtest: Al'da long, Sat'ta short; kâr, işlem listesi, düşüş", code: utBotStrategy, strategy: true },
   { id: "ema_trend_4h_strategy", name: "EMA Trend 4s Strateji (bot sistemi)", description: "Backtest: botun sistemi, 3×ATR stop ile", code: emaTrendStrategy, strategy: true },
-  { id: "trend_avcisi_strategy", name: "Trend Avcısı Strateji (15 dk)", description: "Backtest: 15 dk'da en tutarlı bulunan sistem; kazanma ~%35, kâr büyük trendlerden", code: trendAvcisiStrategy, strategy: true },
+  { id: "trend_avcisi_strategy", name: "Trend Avcısı Strateji (15 dk)", description: "Backtest: 15 dk kanal kırılımı + iz süren stop; kazanma ~%35. 2024-26 artı, 2020-24 eksi", code: trendAvcisiStrategy, strategy: true },
   { id: "supertrend", name: "Supertrend", description: "ATR tabanlı trend çizgisi ve dönüş sinyalleri", code: supertrend },
   { id: "ema_ribbon", name: "EMA 20/50/200", description: "Üç üssel hareketli ortalama", code: emaRibbon },
   { id: "bollinger", name: "Bollinger Bantları", description: "SMA ± standart sapma bantları", code: bollinger },

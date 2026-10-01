@@ -42,7 +42,11 @@ yeterli (ör. **UT Bot Alerts**). `strategy()` betikleri **Strateji Test Aracı*
   likidasyon ve fonlama ücreti hesaba katılmaz. `?demo` verisi yapay (düzgün dalgalar) olduğundan oradaki
   strateji sonuçları anlamsızdır; gerçek sonuç için Binance verisiyle kullan.
 
-## Trend Avcısı (15 dk) — gerçek veriyle araştırılarak bulunan strateji
+## Trend Avcısı (15 dk) — araştırma stratejisi (uzun geçmişte tutmadı)
+
+> **Uyarı:** 2024-09 → 2026-09 sınavlarını geçti, ama hiç görmediği **2020-01 → 2024-08**'de (15 coin, 6304 işlem)
+> zarar etti: işlem başına −%0,12, PF 0,95; 2020-2024'ün her yılı sıfır ya da eksi. Gerçek parayla kullanmak için
+> yeterli kanıt yok.
 
 Kütüphanede gösterge (**Trend Avcısı**: Al/Sat/Çık etiketleri, iz süren stop çizgisi, alarmlar) ve backtest sürümü
 (**Trend Avcısı Strateji**) olarak var; ikisi aynı işlemleri verir (testte denetlenir). Grafik **15 dk** olmalı.
@@ -58,17 +62,31 @@ Kütüphanede gösterge (**Trend Avcısı**: Al/Sat/Çık etiketleri, iz süren 
 | Geliştirme: 2025-04 → 2026-06, 8 coin | 920 | %36,7 | +%0,29 | 1,18 |
 | **Son sınav** (hiç bakılmamış): 2026-07 → 2026-09, BTC/ETH/SOL/XRP/BNB/DOGE | 160 | %33,1 | +%0,04 | 1,03 |
 | **Görülmemiş coinler** (hiç kullanılmamış): XRP/BNB/DOGE, 2024-09 → 2026-09 | 559 | %36,7 | +%0,60 | 1,37 |
+| **Uzun geçmiş** (hiç görülmemiş): 2020-01 → 2024-08, 15 coin | 6304 | %34,4 | −%0,12 | 0,95 |
 | Karşılaştırma: orijinal UT Bot Strateji, son sınav dönemi, 15 dk | 6302 | %28,4 | −%0,11 | 0,65 |
 
   Görülmemiş coinlerde gerçek fonlama ücretleriyle +%0,59/işlem; son sınav dönemi fiilen başa baş (%0,065 komisyonda
   PF 1,00). Uygulamada örnek: DOGE 2025-05-01 → 2026-09-29 net +%60,4 (al-ve-tut −%45,8), **maks. düşüş %39**;
   BTC son sınav dönemi −%3,4 (al-ve-tut +%42,4). Yatay dönemlerde küçük zararlarla beklenir; özsermayenin %100'ü ile
   düşüş büyüktür, daha küçük emir büyüklüğü kullan. Geçmiş sonuç gelecek garantisi değildir.
-- **Neden %70 kazanma değil:** 5 dk ve 15 dk'da UT Bot sinyallerinin ve denenen 12 ek özelliğin (hacim, alıcı baskısı,
-  fonlama, saat, oynaklık…) rastgele girişe göre tutarlı üstünlüğü yok; %70 kazanma yalnız kâr al küçük / zarar kes
-  büyük seçilerek elde ediliyor ve komisyon kadar zarar ettiriyor. 15 dk'da geliştirmede %75 kazanan bir kural
-  (UT trendi yönünde güçlü mum) sonraki 3 ayda %63'e düştü. 8 strateji ailesinden tutarlı kâr eden tek aile trend
-  takibi çıktı.
+- **Neden %70 kazanma + kâr yok (bütün denemeler):** her denemede kural önce geliştirme verisinde bulundu, sonuçlardan
+  önce donduruldu, sonra hiç görülmemiş veride bir kez sınandı:
+
+| Deneme | Grafik | Hiç görülmemiş veri | İşlem | Kazanma | İşlem başına |
+|---|---|---|---|---|---|
+| UT Bot Pro (UT trendi + güçlü mum) | 15 dk | 2026-04 → 06, BTC/ETH/SOL | — | %63,3 | −%0,25 |
+| Momentum 4s (sert mum / RSI aşırılığı) | 4 saat | ADA/AVAX/LINK/LTC, 2024-11 → 2026-09 | 377 | %74,5 | −%0,04 |
+| Momentum 4s | 4 saat | 8 coin, 2024-11 → 2025-03 | 180 | %68,3 | −%0,95 |
+| Günlük Momentum (sert mum) | 1 gün | 15 coin, 2023-01 → 2024-08 | 308 | %71,8 | −%0,07 |
+| Günlük Momentum | 1 gün | 15 coin, 2024-09 → 2026-09 | 401 | %77,8 | +%0,97 |
+| Trend Avcısı | 15 dk | 15 coin, 2020-01 → 2024-08 | 6304 | %34,4 | −%0,12 |
+
+  %70+ kazanma her grafikte ve görülmemiş veride de çıkıyor, çünkü kâr al küçük, zarar kes büyük seçiliyor (rastgele
+  girişte bile ~%75). Ama kâr sağlam değil: aynı kural bir dönemde artı, başka dönemde eksi. Günlük grafikte her
+  işlemde sermayenin tamamıyla coin başına en büyük düşüş medyanı %35-42. 5 dk'da UT Bot sinyallerinin, 15 dk'da 12
+  ek özelliğin (hacim, alıcı baskısı, fonlama, saat, oynaklık…) rastgele girişe göre tutarlı üstünlüğü yok; 1 saatte
+  aday çıkmadı. Sonuç: basit grafik kurallarıyla Binance vadelide (%0,05 komisyon) 2020-2026 boyunca tutarlı kâr eden
+  bir kural bulunamadı.
 - **Yöntem ve yeniden üretim:** `tools/backtest/` (aşağıda). Veri ayrımı ve kabul ölçütleri sonuçlardan önce
   `tools/backtest/protocol.ts`'te sabitlendi, her değişiklik orada kayıtlı; son sınav bir kez açıldı.
 
@@ -133,6 +151,15 @@ python3 tools/backtest/analyze.py --tf 15m          # piyasa davranışı analiz
 python3 tools/backtest/strategy_lab.py              # 15 dk strateji laboratuvarı (8 aile, temkinli dolum)
 npm run bt:sweep -- tools/backtest/specs/t1_dev2.ts # motorla tarama/doğrulama (4 işçi)
 npm run bt:final                                    # son sınav (frozen.json; her çalıştırma bakış kaydına yazılır)
+# uzun geçmiş: research-data dalı (15 dk mumlar, 2020 → )
+git -C ../bot fetch --depth 1 origin research-data:refs/remotes/origin/research-data && mkdir -p .cache/research-data
+git -C ../bot archive origin/research-data | tar -x -C .cache/research-data
+python3 tools/backtest/import_research_data.py      # → .cache/bars/<SYM>_15m.f64 (+ funding birleşimi)
+python3 tools/backtest/htf_study.py --tf 4h         # 1 s / 4 s olay çalışması (htf_momentum.py: 4 s sağlamlık)
+python3 tools/backtest/long_study.py                # 2020-2022 taraması: 15 dk / 1 s / 4 s / 1 g
+npm run bt:final -- --frozen tools/backtest/frozen_4h.json --study-h   # 4 s sınavı
+npm run bt:final -- --frozen tools/backtest/frozen_1d.json --study-l   # uzun geçmiş sınavları
+npm run bt:final -- --study-t                       # Trend Avcısı, 2020-01 → 2024-08
 BT_REAL=1 npx playwright test e2e/real.spec.ts      # uygulamada gerçek veriyle aynı sonuç + ekran görüntüsü
 ```
 

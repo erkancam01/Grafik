@@ -5,6 +5,7 @@
 // mumun açılışında girilir. Zarar kes: giriş ∓ 3 × 1 saatlik ATR. Kâr al yok: iz süren stop işlem boyunca görülen
 // en iyi fiyatın 5 × ATR gerisinde (her mum kapanışında güncellenir, yalnız lehe kayar). En çok 10 gün.
 // Kazanma oranı düşüktür (~%35-40): çok sayıda küçük zarar, az sayıda büyük kazanç.
+// Uyarı: hiç görmediği 2020-01 → 2024-08'de (15 coin, 6304 işlem) zarar etti: işlem başına −%0,12, PF 0,95 (bkz. README).
 // Varsayılan: 1000 USDT, her işlemde özsermayenin %100'ü, komisyon %0,05 (Binance vadeli piyasa emri).
 // Hepsi Ayarlar → Strateji özellikleri'nden değiştirilebilir. Grafik 15 dk olmalı.
 strategy("Trend Avcısı Strateji (15 dk)", shorttitle = "Trend Avcısı S", overlay = true, initial_capital = 1000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100, commission_type = strategy.commission.percent, commission_value = 0.05)

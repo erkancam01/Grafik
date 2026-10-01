@@ -113,6 +113,9 @@ export const CRITERIA: { final: Criteria; holdout: Criteria; dev: { pooledWinRat
  *             medyan ×0,94 / ×0,95, en büyük düşüş medyanı %35 / %42. Sonuç: 15 dk, 1 s, 4 s, 1 g'de yüksek kazanma
  *             oranı görülmemiş veride sürüyor (geometri), kâr dönemden döneme değişiyor; ≥ %70 + kâr sağlam değil.
  *             Ek denetim (T_CHECK, aşağıda): teslim edilen Trend Avcısı, hiç görmediği 2020-01 → 2024-08'de.
+ * 2026-10-01  T_CHECK (bakış 1) — TUTMADI. Trend Avcısı × 15 coin × 2020-01 → 2024-08: 6304 işlem, kazanma %34,4,
+ *             −%0,123/işlem (fonlama dahil −%0,184), PF 0,95; yıllar 2020 −0,004, 2021 −0,014, 2022 −0,109, 2023 −0,244,
+ *             2024 −0,238; bileşik özsermaye medyanı ×0,31. README ve kütüphane açıklaması buna göre düzeltildi.
  */
 
 /**
