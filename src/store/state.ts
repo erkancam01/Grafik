@@ -24,13 +24,11 @@ export interface UserScript {
   updatedAt: number;
 }
 
-export const DEFAULT_FAVORITES = [
-  "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "LINKUSDT", "LTCUSDT", "DOTUSDT",
-  "AVAXUSDT", "TRXUSDT", "BCHUSDT", "ETCUSDT", "XLMUSDT",
-];
+/** Uygulama yalnız altın gösterir: XAUUSDT (Binance vadeli) ve PAXGUSDT (Binance spot, uzun geçmiş). */
+export const DEFAULT_FAVORITES = ["XAUUSDT", "PAXGUSDT"];
 
 export const DEFAULT_SETTINGS: Settings = {
-  symbol: "BTCUSDT",
+  symbol: "XAUUSDT",
   interval: "4h",
   theme: "dark",
   favorites: DEFAULT_FAVORITES,

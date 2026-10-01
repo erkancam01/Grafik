@@ -1,6 +1,7 @@
 # Grafik — TradingView benzeri grafik + Pine Script indikatörleri ve strateji testi
 
-Tarayıcıda çalışan, kurulum gerektirmeyen bir grafik ekranı. Binance mumlarını gösterir ve **Pine Script** ile
+Tarayıcıda çalışan, kurulum gerektirmeyen bir grafik ekranı. **Yalnız altın** gösterir (Binance XAUUSDT ve PAXGUSDT
+mumları) ve **Pine Script** ile
 yazılmış indikatörleri çalıştırır: TradingView'daki bir göstergenin kaynak kodunu kopyalayıp buraya yapıştırman
 yeterli (ör. **UT Bot Alerts**). `strategy()` betikleri **Strateji Test Aracı**'nda geriye dönük test edilir
 (net kâr, işlem listesi, düşüş…). Çizim araçları yoktur; odak grafik ve kodla indikatördür.
@@ -11,7 +12,9 @@ yeterli (ör. **UT Bot Alerts**). `strategy()` betikleri **Strateji Test Aracı*
 
 ## Kullanım
 
-- **Sembol:** sol üstteki `BTC/USDT` düğmesi → ara ya da favorilerden seç (yıldızla favori ekle).
+- **Sembol (yalnız altın):** sol üstteki `XAU/USDT` düğmesi → **XAU/USDT** (Binance vadeli altın sözleşmesi,
+  2025-12'den beri) ya da **PAXG/USDT** (Binance spot, altına bağlı PAX Gold tokeni, 2020'den beri; haftalık ve uzun
+  geçmiş için). Tarayıcıda kayıtlı eski bir coin seçimi kendiliğinden altına geçer.
 - **Zaman dilimi:** üst çubuk (1m … 1W).
 - **İndikatör ekle:** `ƒx İndikatörler` → **Kütüphane** (tek dokunuş) ya da **Kod yaz** (Pine kodunu yapıştır →
   *Kaydet ve grafiğe ekle*). Hatalı kodda satır numarası gösterilir.
@@ -84,6 +87,10 @@ kâr al / zarar kes çizgileri, alarmlar) ve backtest sürümü (**Rejim Stratej
   artı; düşüş 189 işlem, %70,4, +%1,06 ama 2026'da −%5,2 (zararın kaynağı); yatay 124 işlem, %62,9, −%0,16 (zayıf).
   Ayarlardan her rejim ayrı ayrı kapatılabilir.
 - **Bugün (2026-09-29):** 15 coinin 13'ü yükseliş rejiminde (TRX yatay), yani etkin kural yükseliş kuralı.
+- **Altında** (ayarlar değiştirilmeden; altın seçimde hiç kullanılmadı): spot PAXGUSDT (altına bağlı token)
+  2021-01 → 2026-09, 51 işlem, %76,5 kazanma, işlem başına +%0,03 (fiilen başa baş). 2021-2025'in her yılı artı,
+  2026'da 10 işlem, %40 kazanma, −%2,8. Yılda ~9 sinyal. Yalnız altın verisiyle yapılan kural seçimi tutmadı
+  (rastgele kurallardan farksız; `regime_study.py --coins SPOT-PAXGUSDT --tag altin`).
 - **Uygulamada örnek** (Strateji Test Aracı, 2025-01-01 → 2026-09-29, gerçek veri): SOL 16 işlem, %68,8 kazanma,
   net +%27,6 (al-ve-tut −%37,1), maks. düşüş %36; BTC 19 işlem, %63,2 kazanma, net −%8,2 (al-ve-tut −%10,6).
   Coin ve dönem kısaldıkça sonuç çok değişir.
@@ -143,8 +150,31 @@ Kütüphanede gösterge (**Trend Avcısı**: Al/Sat/Çık etiketleri, iz süren 
 
 ## Veri
 
-Binance USDT-M vadeli piyasasının herkese açık uçları (anahtar gerekmez). Vadeli uçlara ulaşılamazsa otomatik olarak
-spot verisine geçer. `?demo` ile çevrimdışı demo verisi açılır (bağlantısız deneme).
+Binance'in herkese açık uçları (anahtar gerekmez): XAUUSDT vadeli (USDT-M) uçtan, PAXGUSDT spot uçtan çekilir; birine
+ulaşılamazsa diğeriyle açılır. Haftalık mumlar pazartesi 00:00 UTC'de başlar (Binance ve TradingView gibi).
+`?demo` ile çevrimdışı demo verisi açılır (bağlantısız deneme).
+
+## Altında UT Bot (varsayılan ayarlar: anahtar 1, ATR 10)
+
+Kütüphanedeki **UT Bot Strateji**, PAXG/USDT, 2021-01-01 → 2026-09-29, komisyon %0,05/taraf, işlem başına
+sermayenin %100'ü (uygulamanın Strateji Test Aracı'yla aynı motor; `tools/backtest/gold_utbot.ts`):
+
+| Grafik | Biçim | İşlem | Kazanma | Net | Not |
+|---|---|---|---|---|---|
+| **1 hafta** | **yalnız long** | 16 | %62,5 | **+%68,4** | kâr faktörü 3,78; maks. düşüş %31 (uygulamada) |
+| 1 hafta | Al'da long, Sat'ta short | 32 | %40,6 | +%15,8 | short tarafı zarar ettiriyor |
+| 1 gün | yalnız long | 93 | %41,9 | +%69,2 | |
+| 1 gün | Al'da long, Sat'ta short | 187 | %41,2 | +%26,2 | |
+| 4 saat | yalnız long | 573 | %36,5 | −%20,0 | |
+| 1 saat | yalnız long | 2608 | %25,2 | −%97,5 | komisyon ve sahte sinyaller |
+
+- Al-ve-tut aynı dönemde +%112-116 (en büyük düşüş %30). Haftalık UT Bot daha az kazandı ama zamanın çoğunda
+  piyasa dışındaydı; 16 işlem istatistik için az.
+- XAU/USDT'nin geçmişi kısa (2026'da günlük: 31 işlem, −%16,2; haftalık 2 işlem).
+- Altın 2021'den beri yükselişte olduğu için short sinyalleri zarar ettiriyor: ayarlardan **İşlem yönü → Yalnız long**.
+- Yapay zekâ ile haber filtresi düşüncesi: geçmişe dönük sınanamaz (model, haberlerin sonucunu biliyor); haftalık
+  işlemlerde sinyali haberle onaylayan bir filtrenin düz UT Bot'u geçmesi için %70'in üstünde isabet gerekir (benzetim:
+  %50 isabette net ~+%30, %60'ta ~+%44, %70'te ~+%61, %80'de ~+%79; düz UT Bot +%68).
 
 ## Pine Script desteği
 
@@ -212,8 +242,13 @@ npm run bt:final -- --frozen tools/backtest/frozen_4h.json --study-h   # 4 s sı
 npm run bt:final -- --frozen tools/backtest/frozen_1d.json --study-l   # uzun geçmiş sınavları
 npm run bt:final -- --study-t                       # Trend Avcısı, 2020-01 → 2024-08
 python3 tools/backtest/regime_study.py              # rejim çalışması: ileriye doğru yürüyen test (2021-2026)
+# altın: .github/workflows/altin-verisi.yml (GitHub'da indirir, dala data/altin/ yazar) → içe aktar → sınavlar
+python3 tools/backtest/import_gold_data.py          # data/altin → .cache/bars (SPOT-PAXGUSDT, XAUUSDT, …)
+npm run bt:final -- --study-g --coins SPOT-PAXGUSDT,XAUUSDT,PAXGUSDT   # Rejim Strateji altında
+python3 tools/backtest/regime_study.py --coins SPOT-PAXGUSDT --tag altin --min-trades 40
+node --import jiti/register tools/backtest/gold_utbot.ts  # altında UT Bot: 1 hafta / 1 gün / 4 saat / 1 saat
+BT_REAL=1 npx playwright test e2e/real.spec.ts      # uygulamada gerçek altın verisiyle aynı sonuç + ekran görüntüsü
 npm run bt:sweep -- tools/backtest/specs/r1_rejim.ts  # Rejim Strateji, motorla 2021-2026 (laboratuvarla eşleşme)
-BT_REAL=1 npx playwright test e2e/real.spec.ts      # uygulamada gerçek veriyle aynı sonuç + ekran görüntüsü
 ```
 
 Yapı: `src/pine/` (lexer → parser → derleyici → yürütme, `strategy.ts` emir/işlem motoru, `builtins/`, `library/`),

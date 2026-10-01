@@ -20,6 +20,8 @@ rejimiyse ve sinyal Y yılındaysa alınır.
 Kabul (ana model, 2021-01 → 2026-09 toplamı): kazanma ≥ %70, ort. > 0, PF > 1; 6 test yılının ≥ 4'ünde ort. > 0;
 ≥ 10/15 coinde PF > 1. Denetim: aynı yöntem yalnız rastgele girişli kurallarla (10 tohum) — sıfır civarı beklenir.
 Kullanım: python tools/backtest/regime_study.py  →  .cache/results/regime_study.md (+ regime_study.json)
+Tek enstrüman (ör. altın): --coins PAXGUSDT --tag altin --min-trades 40 → regime_study_altin.md; tek enstrümanda
+BTC modeli yok, coin ölçütü "PF > 1" olur.
 """
 
 from __future__ import annotations
@@ -32,23 +34,31 @@ from pathlib import Path
 
 import numpy as np
 
+_ARGS = sys.argv[1:]
+
+
+def _arg(name: str, default: str | None = None) -> str | None:
+    return _ARGS[_ARGS.index(name) + 1] if name in _ARGS else default
+
+
 sys.argv = [sys.argv[0], "--tf", "15m"]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import analyze as A  # noqa: E402
 import long_study as L  # noqa: E402
 
-COINS = L.COINS
+COINS = _arg("--coins", ",".join(L.COINS)).split(",")
+TAG = _arg("--tag", "")
 TFS = {"1h": 3600, "4h": 14400, "1d": 86400}
 HOLD_DAYS = {"1h": 3, "4h": 7, "1d": 20}
 GEOM = L.GEOM
 DIRMODES = ("her ikisi", "yalnız long", "yalnız short")
 REGIMES = ("yükseliş", "düşüş", "yatay")
-MODELS = ("coin", "btc", "yok")
+MODELS = ("coin", "btc", "yok") if len(COINS) > 1 else ("coin", "yok")
 Y0 = 2020
 NY = 7  # 2020 … 2026
 TEST_YEARS = list(range(2021, 2027))
-SEL = {"minTrades": 60, "winRate": 72.0}
-ACCEPT = {"winRate": 70.0, "yearsPositive": 4, "pfCoins": 10}
+SEL = {"minTrades": int(_arg("--min-trades", "60")), "winRate": 72.0}
+ACCEPT = {"winRate": 70.0, "yearsPositive": 4, "pfCoins": math.ceil(len(COINS) * 2 / 3)}
 FEE = L.FEE
 DAY = 86_400_000
 
@@ -334,7 +344,7 @@ def report(title: str, sel: dict, trades: dict, lines: list, primary: bool) -> d
             (f"ort. > 0 ({tot['avg']:+.1f} bps)", tot["n"] > 0 and tot["avg"] > 0),
             (f"PF > 1 ({tot['pf']:.2f})", tot["n"] > 0 and tot["pf"] > 1),
             (f"artı yıl ≥ {ACCEPT['yearsPositive']}/6 ({pos_years})", pos_years >= ACCEPT["yearsPositive"]),
-            (f"PF > 1 coin ≥ {ACCEPT['pfCoins']}/15 ({pf_coins})", pf_coins >= ACCEPT["pfCoins"]),
+            (f"PF > 1 coin ≥ {ACCEPT['pfCoins']}/{len(COINS)} ({pf_coins})", pf_coins >= ACCEPT["pfCoins"]),
         ]
         lines += ["", ("**Kabul (ana model):**" if primary and model == "coin" else "Kabul ölçütleri (bilgi):")]
         lines += [f"- {'✅' if v else '❌'} {t}" for t, v in ok]
@@ -356,7 +366,7 @@ def run_universe(universe: str, pool: ProcessPoolExecutor) -> tuple[dict, dict, 
 
 
 def main() -> None:
-    lines = ["# Rejim çalışması — ileriye doğru yürüyen test (2021-01 → 2026-09, 15 coin)", "",
+    lines = [f"# Rejim çalışması — ileriye doğru yürüyen test (2021-01 → 2026-09, {', '.join(COINS) if len(COINS) < 4 else f'{len(COINS)} coin'})", "",
              "Her yılın başında yalnız o güne kadar kapanmış işlemlere bakılarak her rejim için kural seçilir; o yıl coin "
              "hangi rejimdeyse o kuralla işlem yapılır. Ort. bps komisyon sonrası. Ana model: coinin kendi rejimi.", ""]
     with ProcessPoolExecutor(max_workers=3) as pool:
@@ -376,12 +386,13 @@ def main() -> None:
     main_ok = verdicts["coin"]["pass"]
     lines += ["## Sonuç", "", f"Ana model (coin rejimi): **{'GEÇTİ' if main_ok else 'GEÇMEDİ'}**.", ""]
     L.OUT.mkdir(parents=True, exist_ok=True)
-    (L.OUT / "regime_study.md").write_text("\n".join(lines) + "\n")
-    (L.OUT / "regime_study.json").write_text(json.dumps({
+    name = f"regime_study{'_' + TAG if TAG else ''}"
+    (L.OUT / f"{name}.md").write_text("\n".join(lines) + "\n")
+    (L.OUT / f"{name}.json").write_text(json.dumps({
         "selection": {f"{m}|{y}|{s}": [list(k), v] for (m, y, s), (k, v) in sel.items()},
         "verdicts": verdicts, "verdicts_random": verdicts_r, "trades": trades}, ensure_ascii=False, default=float))
     print("\n".join(lines))
-    print(f"rapor: {L.OUT / 'regime_study.md'}")
+    print(f"rapor: {L.OUT / (name + '.md')}")
 
 
 if __name__ == "__main__":

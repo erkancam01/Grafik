@@ -1,16 +1,16 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 import { DemoSource } from "../src/data/demo";
 
-/** Binance vadeli uçlarını sahte veriyle yanıtla (gerçek istemci kodu çalışır; WebSocket yoklamaya düşer). */
+/** Binance vadeli ve spot uçlarını sahte veriyle yanıtla (gerçek istemci kodu çalışır; WebSocket yoklamaya düşer). */
 async function mockBinance(page: Page) {
   const demo = new DemoSource();
-  await page.route("https://fapi.binance.com/**", async (route) => {
+  const handler = async (route: Route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith("/ticker/24hr")) {
       const syms = await demo.symbols();
-      return route.fulfill({
-        json: syms.map((s) => ({ symbol: s.symbol, lastPrice: String(s.price), priceChangePercent: String(s.changePct), quoteVolume: String(s.quoteVolume) })),
-      });
+      const row = (s: (typeof syms)[number]) => ({ symbol: s.symbol, lastPrice: String(s.price), priceChangePercent: String(s.changePct), quoteVolume: String(s.quoteVolume) });
+      const one = url.searchParams.get("symbol");
+      return route.fulfill({ json: one ? row(syms.find((s) => s.symbol === one)!) : syms.map(row) });
     }
     if (url.pathname.endsWith("/klines")) {
       const q = url.searchParams;
@@ -20,8 +20,10 @@ async function mockBinance(page: Page) {
       return route.fulfill({ json: rows });
     }
     return route.fulfill({ status: 404, json: { msg: "yok" } });
-  });
-  await page.routeWebSocket(/fstream\.binance\.com/, (ws) => ws.close());
+  };
+  await page.route("https://fapi.binance.com/**", handler);
+  await page.route("https://data-api.binance.vision/**", handler);
+  await page.routeWebSocket(/fstream\.binance\.com|data-stream\.binance\.vision/, (ws) => ws.close());
 }
 
 function collectErrors(page: Page): string[] {
@@ -42,7 +44,7 @@ test.beforeEach(async ({ page }) => {
 test("demo: grafik ve UT Bot açılır, telefonda yatay taşma yok", async ({ page }) => {
   const errs = collectErrors(page);
   await page.goto("/?demo");
-  await expect(page.getByTestId("chart-header")).toContainText("BTCUSDT");
+  await expect(page.getByTestId("chart-header")).toContainText("XAUUSDT");
   await expect(page.getByTestId("legend-row")).toHaveCount(1);
   await expect(page.getByTestId("legend-row").first()).toContainText("UT Bot Alerts");
   await expect(page.getByTestId("legend-error")).toHaveCount(0);
@@ -52,15 +54,19 @@ test("demo: grafik ve UT Bot açılır, telefonda yatay taşma yok", async ({ pa
   expect(errs).toEqual([]);
 });
 
-test("Binance (sahte yanıt): vadeli kaynak, sembol ve zaman dilimi değişimi", async ({ page }) => {
+test("Binance (sahte yanıt): yalnız altın; XAUUSDT vadeli, PAXGUSDT spot, zaman dilimi değişimi", async ({ page }) => {
   const errs = collectErrors(page);
   await mockBinance(page);
   await page.goto("/");
+  await expect(page.getByTestId("chart-header")).toContainText("XAUUSDT");
   await expect(page.getByTestId("chart-header")).toContainText("Binance vadeli");
   await page.getByTestId("symbol-button").click();
-  await page.getByTestId("symbol-search").fill("eth");
-  await page.getByTestId("symbol-list").getByRole("button", { name: /^ETH\/USDT/ }).click();
-  await expect(page.getByTestId("chart-header")).toContainText("ETHUSDT");
+  await page.getByTestId("symbol-list").getByRole("button", { name: /\/USDT/ }).first().waitFor();
+  expect(await page.getByTestId("symbol-list").getByRole("button", { name: /\/USDT/ }).count()).toBe(2);
+  await page.getByTestId("symbol-search").fill("paxg");
+  await page.getByTestId("symbol-list").getByRole("button", { name: /^PAXG\/USDT/ }).click();
+  await expect(page.getByTestId("chart-header")).toContainText("PAXGUSDT");
+  await expect(page.getByTestId("chart-header")).toContainText("Binance spot");
   await page.getByTestId("tf-1h").click();
   await expect(page.getByTestId("chart-header")).toContainText("1h");
   await expect(page.getByTestId("legend-row").first()).toContainText("UT Bot");
@@ -221,6 +227,22 @@ test("kütüphaneden Rejim (gösterge ve strateji) günlükte eklenir", async ({
   await expect(page.getByTestId("strategy-strip")).toContainText("Rejim");
   await expect(page.getByTestId("legend-error")).toHaveCount(0);
   expect(errs).toEqual([]);
+});
+
+test("kayıtlı eski bir coin ayarı altına geçer", async ({ page }) => {
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem("e2e-eski")) {
+      localStorage.setItem("grafik.settings", JSON.stringify({ symbol: "BTCUSDT", interval: "1d", theme: "dark", favorites: ["BTCUSDT", "ETHUSDT"] }));
+      sessionStorage.setItem("e2e-eski", "1");
+    }
+  });
+  await page.goto("/?demo");
+  await expect(page.getByTestId("chart-header")).toContainText("XAUUSDT");
+  await expect(page.getByTestId("chart-header")).toContainText("1D");
+  await expect(page.getByTestId("legend-error")).toHaveCount(0);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("grafik.settings") ?? "{}"));
+  expect(saved.symbol).toBe("XAUUSDT");
+  expect(saved.favorites).toEqual(["XAUUSDT", "PAXGUSDT"]);
 });
 
 test("strateji kodu yapıştır (Pine v4): test aracı çıkar", async ({ page }) => {

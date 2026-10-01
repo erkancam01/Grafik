@@ -1,4 +1,4 @@
-/** Sembol seçici: arama, favoriler, hacme göre tüm USDT çiftleri. */
+/** Sembol seçici: arama, favoriler, kaynağın verdiği semboller (altın uygulamasında XAUUSDT ve PAXGUSDT). */
 import { useMemo, useState } from "react";
 import type { SymbolInfo } from "../data/source";
 import { fmtNum, priceDigits } from "../chart/render";
@@ -37,7 +37,7 @@ export function SymbolPicker({
           <IconSearch className="absolute left-2.5 top-2.5 text-subtle" size={16} />
           <input
             className="input pl-8"
-            placeholder="Ara: BTC, ETH, SOL…"
+            placeholder="Ara: XAU, PAXG"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             autoCapitalize="characters"
