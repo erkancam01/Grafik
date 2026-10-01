@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BinanceSource, FUTURES, SPOT, detectBinance } from "../src/data/binance";
 import { DemoSource } from "../src/data/demo";
-import { applyLiveBar, heikinAshi, mergeBars } from "../src/data/source";
+import { GOLD_IDS, GoldSource } from "../src/data/gold";
+import { applyLiveBar, heikinAshi, mergeBars, resample } from "../src/data/source";
 import { ExtraData, computeIndicator, loadHistory, type Runner } from "../src/indicators/compute";
 import { run } from "../src/pine";
 import { LIBRARY } from "../src/pine/library";
@@ -74,6 +75,63 @@ describe("Binance istemcisi", () => {
   it("HTTP hatası anlaşılır mesajla", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ msg: "Invalid symbol." }), { status: 400 })));
     await expect(new BinanceSource(FUTURES).klines("XXX", "1h", 5)).rejects.toThrow("HTTP 400: Invalid symbol.");
+  });
+});
+
+describe("altın kaynağı", () => {
+  const ticker = (symbol: string, price: string) => ({ symbol, lastPrice: price, priceChangePercent: "0.5", quoteVolume: "1000" });
+
+  it("XAUUSDT vadeli uçtan, PAXGUSDT spot uçtan; semboller tek tek özetten", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("ticker/24hr")) return new Response(JSON.stringify(ticker(url.includes("XAUUSDT") ? "XAUUSDT" : "PAXGUSDT", "4200")));
+      return new Response(JSON.stringify([kline(0, 4200, 3_599_999)]));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const src = await GoldSource.detect();
+    expect(src.available).toEqual(["XAUUSDT", "PAXGUSDT"]);
+    expect(GOLD_IDS).toEqual(["XAUUSDT", "PAXGUSDT"]);
+    expect((await src.symbols()).map((x) => x.symbol)).toEqual(["XAUUSDT", "PAXGUSDT"]);
+    fetchMock.mockClear();
+    await src.klines("XAUUSDT", "1w", 3);
+    await src.klines("PAXGUSDT", "1w", 3);
+    expect(String(fetchMock.mock.calls[0]![0])).toContain(`${FUTURES.rest}/fapi/v1/klines?symbol=XAUUSDT&interval=1w`);
+    expect(String(fetchMock.mock.calls[1]![0])).toContain(`${SPOT.rest}/api/v3/klines?symbol=PAXGUSDT&interval=1w`);
+    expect(src.labelFor("XAUUSDT")).toBe(FUTURES.label);
+    expect(src.labelFor("PAXGUSDT")).toBe(SPOT.label);
+    await expect(src.klines("BTCUSDT", "1h", 1)).rejects.toThrow("yalnız altın");
+  });
+
+  it("vadeli uca ulaşılamazsa yalnız PAXGUSDT; hiçbirine ulaşılamazsa hata", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.startsWith(FUTURES.rest)) throw new TypeError("Failed to fetch");
+        return new Response(JSON.stringify([kline(0, 4200, 1)]));
+      }),
+    );
+    expect((await GoldSource.detect()).available).toEqual(["PAXGUSDT"]);
+    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("Failed to fetch"))));
+    await expect(GoldSource.detect()).rejects.toThrow("altın verisine ulaşılamadı");
+  });
+
+  it("demo kaynağı da yalnız altın", async () => {
+    const d = new DemoSource();
+    expect(d.available).toEqual(["XAUUSDT", "PAXGUSDT"]);
+    expect((await d.symbols()).map((x) => x.symbol)).toEqual(["XAUUSDT", "PAXGUSDT"]);
+  });
+});
+
+describe("haftalık birleştirme", () => {
+  it("haftalar pazartesi 00:00 UTC'de başlar (Binance / TradingView gibi)", () => {
+    const day = 86_400_000;
+    const mon = Date.UTC(2026, 8, 7); // 2026-09-07 pazartesi
+    const closes = Array.from({ length: 14 }, (_, i) => 100 + i);
+    const d = barsFromCloses(closes, 86_400);
+    for (let i = 0; i < 14; i++) d.time[i] = mon - 3 * day + i * day; // cuma 2026-09-04'ten başlayan 14 gün
+    const w = resample(d, 604_800);
+    expect(Array.from(w.time)).toEqual([mon - 7 * day, mon, mon + 7 * day]);
+    expect(new Date(w.time[1]!).getUTCDay()).toBe(1);
+    expect([w.open[1], w.close[1]]).toEqual([d.open[3], d.close[9]]);
   });
 });
 

@@ -114,6 +114,17 @@ export class BinanceSource implements DataSource {
       .sort((a, b) => b.quoteVolume - a.quoteVolume);
   }
 
+  /** Tek sembolün 24 saatlik özeti. */
+  async ticker(symbol: string): Promise<SymbolInfo> {
+    const r = (await getJson(`${this.ep.rest}${this.ep.ticker}?symbol=${encodeURIComponent(symbol)}`)) as {
+      symbol: string;
+      lastPrice: string;
+      priceChangePercent: string;
+      quoteVolume: string;
+    };
+    return { symbol: r.symbol, price: +r.lastPrice, changePct: +r.priceChangePercent, quoteVolume: +r.quoteVolume };
+  }
+
   async klines(symbol: string, interval: string, limit: number, endTime?: number): Promise<BarsData> {
     const iv = intervalById(interval);
     if (!iv) throw new Error(`Desteklenmeyen zaman dilimi: ${interval}`);
