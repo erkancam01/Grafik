@@ -1,6 +1,8 @@
 name: CI
 on:
   push:
+    # ai-yorum: yapay zekâ yorumcusunun kayıt dalı (yalnız JSON), derlenecek bir şey yok
+    branches-ignore: ["ai-yorum"]
   pull_request:
 jobs:
   test:

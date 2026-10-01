@@ -21,7 +21,8 @@ import {
   type Settings,
   type UserScript,
 } from "./store/state";
-import { IconAlert, IconChevron, IconEye, IconEyeOff, IconFx, IconGear, IconMoon, IconPencil, IconSun, IconX } from "./ui/icons";
+import { AiPanel } from "./ui/AiPanel";
+import { IconAlert, IconChevron, IconEye, IconEyeOff, IconFx, IconGear, IconMoon, IconPencil, IconSpark, IconSun, IconX } from "./ui/icons";
 import { IndicatorSheet, type EditTarget, type SheetTab } from "./ui/IndicatorSheet";
 import { InputsDialog } from "./ui/InputsDialog";
 import { StrategySheet, StrategyStrip, type StrategyEntry } from "./ui/StrategyPanel";
@@ -341,6 +342,8 @@ export default function App() {
 
   // ------------------------------------------------------------ çekmeceler
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const closeAi = useCallback(() => setAiOpen(false), []);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [tab, setTab] = useState<SheetTab>("library");
   const [edit, setEdit] = useState<EditTarget>({ id: null, name: "", code: NEW_SCRIPT });
@@ -465,6 +468,10 @@ export default function App() {
           <IconFx size={18} />
           <span className="hidden sm:inline">İndikatörler</span>
         </button>
+        <button type="button" className="btn shrink-0 px-2" onClick={() => setAiOpen(true)} data-testid="ai-button" aria-label="Yapay zekâ yorumu">
+          <IconSpark size={18} />
+          <span className="hidden sm:inline">Yapay zekâ</span>
+        </button>
         <button
           type="button"
           className="btn btn-icon shrink-0"
@@ -523,6 +530,7 @@ export default function App() {
         />
       )}
 
+      <AiPanel open={aiOpen} onClose={closeAi} />
       <SymbolPicker
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
