@@ -191,6 +191,38 @@ test("strateji: test dönemi seçimi sonuçları değiştirir, gereken geçmiş 
   expect(errs).toEqual([]);
 });
 
+test("kütüphaneden Trend Avcısı (gösterge ve strateji) 15 dk'da eklenir", async ({ page }) => {
+  const errs = collectErrors(page);
+  await page.goto("/?demo");
+  await page.getByTestId("tf-15m").click();
+  await expect(page.getByTestId("chart-header")).toContainText("15m");
+  await page.getByTestId("indicators-button").click();
+  await page.getByTestId("add-trend_avcisi").click();
+  await expect(page.getByTestId("legend-row")).toHaveCount(2);
+  await page.getByTestId("indicators-button").click();
+  await page.getByTestId("add-trend_avcisi_strategy").click();
+  await expect(page.getByTestId("legend-row")).toHaveCount(3);
+  await expect(page.getByTestId("strategy-strip")).toContainText("Trend Avcısı");
+  await expect(page.getByTestId("legend-error")).toHaveCount(0);
+  expect(errs).toEqual([]);
+});
+
+test("kütüphaneden Rejim (gösterge ve strateji) günlükte eklenir", async ({ page }) => {
+  const errs = collectErrors(page);
+  await page.goto("/?demo");
+  await page.getByTestId("tf-1d").click();
+  await expect(page.getByTestId("chart-header")).toContainText("1D");
+  await page.getByTestId("indicators-button").click();
+  await page.getByTestId("add-rejim").click();
+  await expect(page.getByTestId("legend-row")).toHaveCount(2);
+  await page.getByTestId("indicators-button").click();
+  await page.getByTestId("add-rejim_strategy").click();
+  await expect(page.getByTestId("legend-row")).toHaveCount(3);
+  await expect(page.getByTestId("strategy-strip")).toContainText("Rejim");
+  await expect(page.getByTestId("legend-error")).toHaveCount(0);
+  expect(errs).toEqual([]);
+});
+
 test("strateji kodu yapıştır (Pine v4): test aracı çıkar", async ({ page }) => {
   await page.goto("/?demo");
   await page.getByTestId("indicators-button").click();

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { run } from "../src/pine";
 import { LIBRARY } from "../src/pine/library";
 import type { BarsData, PineOutput, RunResult } from "../src/pine/types";
-import { resample } from "./helpers";
+import { resample, runWithData } from "./helpers";
 
 interface Fixture {
   bars: { time: number[]; open: number[]; high: number[]; low: number[]; close: number[]; volume: number[]; tfSec: number };
@@ -167,10 +167,9 @@ describe("EMA Trend 4s (botun sistemi)", () => {
 });
 
 describe("kütüphanedeki tüm betikler hatasız çalışır", () => {
-  const h4 = resample(BARS, 14400);
   for (const item of LIBRARY) {
     it(item.name, () => {
-      const out = ok(run(item.code, BARS, { extra: { "BTCUSDT|14400|": h4 } }));
+      const out = ok(runWithData(item.code, BARS));
       expect(out.plots.length + out.shapes.length).toBeGreaterThan(0);
       expect(out.stats.ms).toBeLessThan(3000);
     });

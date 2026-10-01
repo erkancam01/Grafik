@@ -1,12 +1,12 @@
 /**
  * Kütüphane stratejileri bağımsız bir simülasyonla karşılaştırılır: sinyaller referansla doğrulanmış indikatör
- * çıktılarından (UT Bot Al/Sat, EMA/ATR) alınır, emir/işlem hesabı testte ayrıca yazılmıştır.
+ * çıktılarından (UT Bot Al/Sat, EMA/ATR) ya da ham mumlardan alınır, emir/işlem hesabı testte ayrıca yazılmıştır.
  */
 import { describe, expect, it } from "vitest";
 import { run } from "../src/pine";
 import { LIBRARY } from "../src/pine/library";
 import type { BarsData, PineOutput, RunResult, StrategyOut } from "../src/pine/types";
-import { randomBars, resample } from "./helpers";
+import { randomBars, resample, runWithData } from "./helpers";
 
 function ok(r: RunResult): PineOutput {
   if (!r.ok) throw new Error(JSON.stringify("error" in r ? r.error : r.needData));
@@ -163,5 +163,240 @@ describe("EMA Trend 4s Strateji (bot sistemi)", () => {
     const entries = (s: StrategyOut) => [...s.trades, ...s.openTrades].map((t) => [t.entryTime, +t.entryPrice.toFixed(9), t.dir]);
     expect(entries(on4).length).toBeGreaterThan(5);
     expect(entries(on1)).toEqual(entries(on4));
+  });
+});
+
+describe("Trend Avcısı Strateji (15 dk)", () => {
+  const B = randomBars(6000, 21, 900, Date.UTC(2025, 0, 1));
+  // kısa kanal ve kısa günlük EMA: test verisinde (≈ 62 gün) yeterince işlem olsun
+  const small = { "Trend EMA": 5, "Kanal uzunluğu (mum)": 48 };
+  const tight = { ...small, "Zarar kes (ATR katı)": 1.5, "İz süren stop (ATR katı)": 2, "En uzun süre (mum, 0 = sınırsız)": 30 };
+
+  /** Bağımsız hesap: kanal ham mumlardan, günlük EMA ve 1s ATR yardımcı göstergeden; tek pozisyon, sonraki açılışta
+   * giriş, zarar kes giriş ∓ slK×ATR, mum kapanışında en iyi fiyattan trK×ATR geride iz süren stop (sonraki mumdan),
+   * stop açılışta aşılmışsa açılıştan, süre sınırında sonraki açılışta kapanış. */
+  function simulate(p: { trendLen: number; ch: number; slK: number; trK: number; maxBars: number }): Sim {
+    const aux = ok(
+      runWithData(
+        `//@version=5\nindicator("y")\nplot(request.security(syminfo.tickerid, "D", ta.ema(close, ${p.trendLen}), lookahead = barmerge.lookahead_off))\nplot(request.security(syminfo.tickerid, "60", ta.atr(14), lookahead = barmerge.lookahead_off))`,
+        B,
+      ),
+    );
+    const [ema, atr] = aux.plots.map((x) => x.values);
+    const sim = new Sim(B);
+    let pending: { dir: number; qty: number } | null = null;
+    let closeNext = false;
+    let atrE = Number.NaN;
+    let stp = Number.NaN;
+    let best = Number.NaN;
+    let eb = -1;
+    for (let i = 0; i < B.time.length; i++) {
+      const [o, h, l, c] = [B.open[i]!, B.high[i]!, B.low[i]!, B.close[i]!];
+      if (closeNext && sim.trade) sim.close(i, o);
+      closeNext = false;
+      if (pending) {
+        sim.open(i, pending.dir, pending.qty, o);
+        stp = o - pending.dir * p.slK * atrE;
+        best = Number.NaN;
+        eb = i;
+        pending = null;
+      }
+      const t = sim.trade;
+      if (t && (t.dir > 0 ? l <= stp : h >= stp)) sim.close(i, (t.dir > 0 ? o <= stp : o >= stp) ? o : stp);
+      if (sim.trade) {
+        const d = sim.trade.dir;
+        best = Number.isNaN(best) ? (d > 0 ? h : l) : d > 0 ? Math.max(best, h) : Math.min(best, l);
+        stp = d > 0 ? Math.max(stp, best - p.trK * atrE) : Math.min(stp, best + p.trK * atrE);
+        if (p.maxBars > 0 && i - eb + 1 >= p.maxBars) closeNext = true;
+      } else if (i >= p.ch && !Number.isNaN(ema![i]!) && !Number.isNaN(atr![i]!)) {
+        let hh = -Infinity;
+        let ll = Infinity;
+        for (let k = i - p.ch; k < i; k++) {
+          hh = Math.max(hh, B.high[k]!);
+          ll = Math.min(ll, B.low[k]!);
+        }
+        const dir = c > hh && c > ema![i]! ? 1 : c < ll && c < ema![i]! ? -1 : 0;
+        if (dir) {
+          pending = { dir, qty: sim.qtyAt(i) };
+          atrE = atr![i]!;
+        }
+      }
+    }
+    return sim;
+  }
+
+  it("işlemler bağımsız hesapla birebir (varsayılan çıkışlar)", () => {
+    const s = ok(runWithData(code("trend_avcisi_strategy"), B, { inputs: small })).strategy!;
+    const sim = simulate({ trendLen: 5, ch: 48, slK: 3, trK: 5, maxBars: 960 });
+    expect(sim.closed.length).toBeGreaterThan(10);
+    expectSame(s, sim);
+    expect(s.openTrades).toHaveLength(sim.trade ? 1 : 0);
+    expect(s.props).toMatchObject({ initialCapital: 1000, qtyType: "percent_of_equity", qtyValue: 100, commissionValue: 0.05 });
+  });
+
+  it("dar stop, sıkı iz, süre sınırı: stop, iz ve süre çıkışları birebir", () => {
+    const s = ok(runWithData(code("trend_avcisi_strategy"), B, { inputs: tight })).strategy!;
+    const sim = simulate({ trendLen: 5, ch: 48, slK: 1.5, trK: 2, maxBars: 30 });
+    expectSame(s, sim);
+    expect(new Set(s.trades.map((t) => t.exitComment))).toEqual(new Set(["Stop", "Süre"]));
+    expect(s.trades.some((t) => t.exitComment === "Stop" && t.profit > 0)).toBe(true); // iz süren stop kârda kapattı
+    expect(s.long.trades).toBeGreaterThan(0);
+    expect(s.short.trades).toBeGreaterThan(0);
+  });
+
+  it("gösterge stratejinin işlemlerini birebir izler (Al/Sat girişte, Çık çıkışta)", () => {
+    for (const inputs of [small, tight]) {
+      const s = ok(runWithData(code("trend_avcisi_strategy"), B, { inputs })).strategy!;
+      const ind = ok(runWithData(code("trend_avcisi"), B, { inputs }));
+      const bars = (title: string) => ind.shapes.find((x) => x.title === title)!.events.map((e) => e.bar);
+      const all = [...s.trades, ...s.openTrades];
+      expect(bars("Al")).toEqual(all.filter((t) => t.dir > 0).map((t) => t.entryBar));
+      expect(bars("Sat")).toEqual(all.filter((t) => t.dir < 0).map((t) => t.entryBar));
+      expect(bars("Çık")).toEqual(s.trades.map((t) => t.exitBar));
+    }
+  });
+
+  it("50.000 mumda (15 dk'da uygulamanın üst sınırı) işlem bütçesi küçük", () => {
+    const big = randomBars(50000, 3, 900);
+    const out = ok(runWithData(code("trend_avcisi_strategy"), big));
+    expect(out.strategy!.trades.length).toBeGreaterThan(20);
+    expect(out.stats.ops).toBeLessThan(10_000_000);
+  });
+});
+
+describe("Rejim Strateji (günlük)", () => {
+  const B = randomBars(3000, 31, 86400, Date.UTC(2015, 0, 1));
+  /** Açılış boşluklu kopya: açılış önceki kapanıştan ±%1,5'e kadar sapar (boşlukta açılıştan dolum denetlenir). */
+  const G: BarsData = (() => {
+    const g = { ...B, open: B.open.slice(), high: B.high.slice(), low: B.low.slice() };
+    for (let i = 1; i < g.open.length; i++) {
+      const o = B.close[i - 1]! * (1 + Math.sin(i * 12.9898) * 0.015);
+      g.open[i] = o;
+      g.high[i] = Math.max(g.high[i]!, o);
+      g.low[i] = Math.min(g.low[i]!, o);
+    }
+    return g;
+  })();
+  const tight = {
+    "Yükseliş: kâr al (ATR katı)": 1,
+    "Yükseliş: zarar kes (ATR katı)": 1,
+    "Düşüş: RSI üstü → sat": 50,
+    "Düşüş: kâr al (ATR katı)": 1,
+    "Düşüş: zarar kes (ATR katı)": 1,
+    "Yatay: kâr al (ATR katı)": 1,
+    "Yatay: zarar kes (ATR katı)": 1,
+    "En uzun süre (mum, 0 = sınırsız)": 5,
+  };
+  const DEF = { upTp: 0.5, upSl: 2, dnHi: 70, dnTp: 1, dnSl: 2.5, sdTp: 1.5, sdSl: 3, maxBars: 20 };
+  const TIGHT = { upTp: 1, upSl: 1, dnHi: 50, dnTp: 1, dnSl: 1, sdTp: 1, sdSl: 1, maxBars: 5 };
+
+  /** Bağımsız hesap: ATR/RSI/EMA/DMI yardımcı göstergeden, UT Bot Al/Sat kütüphanedeki UT Bot göstergesinden; rejim ve
+   * kural seçimi, tek pozisyon, sonraki açılışta giriş, kâr al / zarar kes girişten ± ATR katı (açılışta aşılmışsa
+   * açılıştan; ikisi aynı mumdaysa açılışa yakın uç önce), süre sınırında sonraki açılışta kapanış. */
+  function simulate(bars: BarsData, p: typeof DEF): Sim {
+    const aux = ok(
+      runWithData(
+        `//@version=5\nindicator("y")\n[p, m, a] = ta.dmi(14, 14)\nplot(ta.atr(14))\nplot(ta.rsi(close, 14))\nplot(ta.ema(close, 50))\nplot(p)\nplot(m)\nplot(a)`,
+        bars,
+      ),
+    );
+    const [atr, rsi, ema, dp, dm, adx] = aux.plots.map((x) => x.values);
+    const ut = (a: number, title: string) =>
+      new Set(ok(runWithData(code("ut_bot"), bars, { inputs: { "Hassasiyet (anahtar değer)": a } })).shapes.find((x) => x.title === title)!.events.map((e) => e.bar));
+    const sell2 = ut(2, "Sat");
+    const buy3 = ut(3, "Al");
+    const sim = new Sim(bars);
+    let pending: { dir: number; qty: number; tpD: number; slD: number } | null = null;
+    let closeNext = false;
+    let tpL = Number.NaN;
+    let slL = Number.NaN;
+    let eb = -1;
+    for (let i = 0; i < bars.time.length; i++) {
+      const [o, h, l, c] = [bars.open[i]!, bars.high[i]!, bars.low[i]!, bars.close[i]!];
+      if (closeNext && sim.trade) sim.close(i, o);
+      closeNext = false;
+      if (pending) {
+        sim.open(i, pending.dir, pending.qty, o);
+        tpL = o + pending.dir * pending.tpD;
+        slL = o - pending.dir * pending.slD;
+        eb = i;
+        pending = null;
+      }
+      const t = sim.trade;
+      if (t) {
+        const d = t.dir;
+        let px = Number.NaN;
+        if (i > eb && (d > 0 ? o <= slL : o >= slL)) px = o;
+        else if (i > eb && (d > 0 ? o >= tpL : o <= tpL)) px = o;
+        else {
+          const hitTp = d > 0 ? h >= tpL : l <= tpL;
+          const hitSl = d > 0 ? l <= slL : h >= slL;
+          if (hitTp && hitSl) px = (d > 0) === h - o <= o - l ? tpL : slL;
+          else if (hitTp) px = tpL;
+          else if (hitSl) px = slL;
+        }
+        if (!Number.isNaN(px)) sim.close(i, px);
+      }
+      if (sim.trade) {
+        if (p.maxBars > 0 && i - eb + 1 >= p.maxBars) closeNext = true;
+        continue;
+      }
+      const v = [atr![i]!, rsi![i]!, ema![i]!, dp![i]!, dm![i]!, adx![i]!];
+      if (v.some(Number.isNaN)) continue;
+      const rej = c > ema![i]! && dp![i]! > dm![i]! && adx![i]! > 20 ? 1 : c < ema![i]! && dm![i]! > dp![i]! && adx![i]! > 20 ? -1 : 2;
+      const L = rej === 1 ? sell2.has(i) : rej === -1 ? rsi![i]! < 30 : buy3.has(i);
+      const S = rej === -1 && rsi![i]! > p.dnHi;
+      if (!L && !S) continue;
+      const [tk, sk] = rej === 1 ? [p.upTp, p.upSl] : rej === -1 ? [p.dnTp, p.dnSl] : [p.sdTp, p.sdSl];
+      pending = { dir: L ? 1 : -1, qty: sim.qtyAt(i), tpD: tk * atr![i]!, slD: sk * atr![i]! };
+    }
+    return sim;
+  }
+
+  it("işlemler bağımsız hesapla birebir (varsayılan ayarlar)", () => {
+    const s = ok(runWithData(code("rejim_strategy"), B)).strategy!;
+    const sim = simulate(B, DEF);
+    expect(sim.closed.length).toBeGreaterThan(30);
+    expectSame(s, sim);
+    expect(s.openTrades).toHaveLength(sim.trade ? 1 : 0);
+    expect(s.props).toMatchObject({ initialCapital: 1000, qtyType: "percent_of_equity", qtyValue: 100, commissionValue: 0.05 });
+  });
+
+  it("dar seviyeler, kısa süre, short açık; açılış boşluklu mumlarda da: kâr al, zarar kes, süre çıkışları birebir", () => {
+    for (const bars of [B, G]) {
+      const s = ok(runWithData(code("rejim_strategy"), bars, { inputs: tight })).strategy!;
+      const sim = simulate(bars, TIGHT);
+      expectSame(s, sim);
+      expect(new Set(s.trades.map((t) => t.exitComment))).toEqual(new Set(["TP", "SL", "Süre"]));
+      expect(s.long.trades).toBeGreaterThan(0);
+      expect(s.short.trades).toBeGreaterThan(0);
+    }
+  });
+
+  it("gösterge stratejinin işlemlerini birebir izler (Al/Sat girişte, Çık çıkışta)", () => {
+    for (const [bars, inputs] of [[B, {}], [B, tight], [G, tight]] as const) {
+      const s = ok(runWithData(code("rejim_strategy"), bars, { inputs })).strategy!;
+      const ind = ok(runWithData(code("rejim"), bars, { inputs }));
+      const at = (title: string) => ind.shapes.find((x) => x.title === title)!.events.map((e) => e.bar);
+      const all = [...s.trades, ...s.openTrades];
+      expect(at("Al")).toEqual(all.filter((t) => t.dir > 0).map((t) => t.entryBar));
+      expect(at("Sat")).toEqual(all.filter((t) => t.dir < 0).map((t) => t.entryBar));
+      expect(at("Çık")).toEqual(s.trades.map((t) => t.exitBar));
+    }
+  });
+
+  it("rejim anahtarları: kapalı rejimde işlem açılmaz", () => {
+    const all = ok(runWithData(code("rejim_strategy"), B)).strategy!.trades.length;
+    const off = { "Yükselişte işlem aç": false, "Düşüşte işlem aç": false, "Yatayda işlem aç": false };
+    expect(ok(runWithData(code("rejim_strategy"), B, { inputs: off })).strategy!.trades).toHaveLength(0);
+    const one = ok(runWithData(code("rejim_strategy"), B, { inputs: { ...off, "Yükselişte işlem aç": true } })).strategy!.trades.length;
+    expect(one).toBeGreaterThan(0);
+    expect(one).toBeLessThan(all);
+  });
+
+  it("5000 günlük mumda işlem bütçesi küçük", () => {
+    const out = ok(runWithData(code("rejim_strategy"), randomBars(5000, 4, 86400, Date.UTC(2010, 0, 1))));
+    expect(out.strategy!.trades.length).toBeGreaterThan(50);
+    expect(out.stats.ops).toBeLessThan(5_000_000);
   });
 });

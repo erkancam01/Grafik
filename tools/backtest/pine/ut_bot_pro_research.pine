@@ -1,0 +1,122 @@
+//@version=5
+// UT Bot Pro — araştırma sürümü (yalnız deneme düzeneği için; kütüphanede yok).
+// Giriş: UT Bot Al/Sat sinyali, üst zaman dilimi EMA'sına göre yön. Çıkış: üst zaman dilimi ATR'si ile kâr al /
+// zarar kes, isteğe bağlı başa baş, süre sınırı ve ters sinyalde çıkış. Pozisyon yokken yeni giriş yapılır.
+// "Rastgele" modlar karşılaştırma içindir: aynı çıkışlarla sinyalin gerçek katkısını ölçer.
+strategy("UT Bot Pro Araştırma", overlay = true, initial_capital = 1000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100, commission_type = strategy.commission.percent, commission_value = 0.05)
+
+a        = input.float(2, "Hassasiyet (anahtar değer)", step = 0.5, group = "UT Bot")
+c        = input.int(10, "ATR periyodu", minval = 1, group = "UT Bot")
+h        = input.bool(false, "Heikin Ashi mumlarından sinyal", group = "UT Bot")
+mode     = input.string("Devam", "Giriş modu", options = ["Devam", "Geri çekilme", "Ham", "Trend yönü", "Rastgele yön", "Rastgele zaman"], group = "Filtreler")
+htf      = input.timeframe("60", "Trend zaman dilimi", group = "Filtreler")
+trendLen = input.int(50, "Trend EMA", minval = 1, group = "Filtreler")
+adxMin   = input.float(0, "En düşük ADX (0 = kapalı)", minval = 0, group = "Filtreler")
+cool     = input.int(0, "Çıkıştan sonra bekleme (mum)", minval = 0, group = "Filtreler")
+yon      = input.string("Her ikisi", "İşlem yönü", options = ["Her ikisi", "Yalnız long", "Yalnız short"], group = "Filtreler")
+atrTf    = input.timeframe("60", "ATR zaman dilimi", group = "Çıkış")
+atrLen   = input.int(14, "ATR uzunluğu (üst zaman dilimi)", minval = 1, group = "Çıkış")
+tpK      = input.float(1, "Kâr al (ATR katı)", minval = 0.05, step = 0.05, group = "Çıkış")
+slK      = input.float(2, "Zarar kes (ATR katı)", minval = 0.05, step = 0.05, group = "Çıkış")
+beK      = input.float(0, "Başa baş tetik (ATR katı, 0 = kapalı)", minval = 0, step = 0.05, group = "Çıkış")
+bePct    = input.float(0.15, "Başa baş payı (%)", minval = 0, step = 0.05, group = "Çıkış")
+maxBars  = input.int(0, "Süre sınırı (mum, 0 = kapalı)", minval = 0, group = "Çıkış")
+minTp    = input.float(0.6, "En kısa kâr al mesafesi (%)", minval = 0, step = 0.05, group = "Çıkış")
+oppExit  = input.bool(false, "Ters sinyalde çık", group = "Çıkış")
+seed     = input.int(1, "Rastgele tohum", group = "Araştırma")
+prob     = input.float(0.01, "Rastgele sinyal olasılığı (mum başına)", minval = 0, group = "Araştırma")
+
+// UT Bot (kütüphanedeki UT Bot Alerts ile aynı)
+xATR  = ta.atr(c)
+nLoss = a * xATR
+src = h ? request.security(ticker.heikinashi(syminfo.tickerid), timeframe.period, close, lookahead = barmerge.lookahead_off) : close
+
+trail = 0.0
+prevTrail = nz(trail[1], 0)
+trail := if src > prevTrail and src[1] > prevTrail
+    math.max(prevTrail, src - nLoss)
+else if src < prevTrail and src[1] < prevTrail
+    math.min(prevTrail, src + nLoss)
+else if src > prevTrail
+    src - nLoss
+else
+    src + nLoss
+
+emaSrc = ta.ema(src, 1)
+above  = ta.crossover(emaSrc, trail)
+below  = ta.crossover(trail, emaSrc)
+buy    = src > trail and above
+sell   = src < trail and below
+
+// Üst zaman dilimleri: trend EMA'sı ve çıkışlar için ATR (kapanmış mum; bakış-ileri yok)
+emaH = request.security(syminfo.tickerid, htf, ta.ema(close, trendLen), lookahead = barmerge.lookahead_off)
+atrH = request.security(syminfo.tickerid, atrTf, ta.atr(atrLen), lookahead = barmerge.lookahead_off)
+up   = close > emaH
+down = close < emaH
+[diP, diM, adx] = ta.dmi(14, 14)
+
+fract(x) => x - math.floor(x)
+r1 = fract(math.sin(bar_index * 12.9898 + seed * 78.233) * 43758.5453)
+r2 = fract(math.sin(bar_index * 39.3468 + seed * 11.135) * 24634.6345)
+sig = buy or sell
+
+longSig = switch mode
+    "Devam"        => buy and up
+    "Geri çekilme" => sell and up
+    "Ham"          => buy
+    "Trend yönü"   => sig and up
+    "Rastgele yön" => sig and r1 < 0.5
+    => r2 < prob and up
+shortSig = switch mode
+    "Devam"        => sell and down
+    "Geri çekilme" => buy and down
+    "Ham"          => sell
+    "Trend yönü"   => sig and down
+    "Rastgele yön" => sig and r1 >= 0.5
+    => r2 < prob and down
+
+var int lastExit = -1000000
+if strategy.closedtrades > 0
+    lastExit := strategy.closedtrades.exit_bar_index(strategy.closedtrades - 1)
+pos    = strategy.position_size
+okAll  = pos == 0 and not na(atrH) and tpK * atrH >= minTp / 100 * close and (adxMin <= 0 or adx >= adxMin) and bar_index - lastExit > cool
+goLong  = okAll and longSig and yon != "Yalnız short"
+goShort = okAll and shortSig and yon != "Yalnız long" and not goLong
+
+var float atrE = na
+var bool beOn = false
+if goLong
+    atrE := atrH
+    beOn := false
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Çıkış L", "Long", profit = tpK * atrH / syminfo.mintick, loss = slK * atrH / syminfo.mintick, comment_profit = "TP", comment_loss = "SL")
+if goShort
+    atrE := atrH
+    beOn := false
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Çıkış S", "Short", profit = tpK * atrH / syminfo.mintick, loss = slK * atrH / syminfo.mintick, comment_profit = "TP", comment_loss = "SL")
+
+// Pozisyondayken (mum kapanışında): başa baş, süre sınırı, ters sinyal. Yeni seviyeler sonraki mumdan geçerli.
+var float hiS = na
+var float loS = na
+if pos != 0
+    eb = strategy.opentrades.entry_bar_index(0)
+    ep = strategy.position_avg_price
+    hiS := bar_index == eb ? high : math.max(hiS, high)
+    loS := bar_index == eb ? low : math.min(loS, low)
+    if beK > 0 and not beOn
+        if pos > 0 and hiS >= ep + beK * atrE
+            beOn := true
+            strategy.exit("Çıkış L", "Long", limit = ep + tpK * atrE, stop = ep * (1 + bePct / 100), comment_profit = "TP", comment_loss = "BE")
+        else if pos < 0 and loS <= ep - beK * atrE
+            beOn := true
+            strategy.exit("Çıkış S", "Short", limit = ep - tpK * atrE, stop = ep * (1 - bePct / 100), comment_profit = "TP", comment_loss = "BE")
+    if maxBars > 0 and bar_index - eb + 1 >= maxBars
+        strategy.close_all(comment = "Süre")
+    else if oppExit and ((pos > 0 and shortSig) or (pos < 0 and longSig))
+        strategy.close_all(comment = "Ters")
+
+// Düzenek için: girişteki ATR ve başa baş durumu (belirsiz çıkış denetimi bunları okur)
+plot(atrE, "ATR giriş", display = display.none)
+plot(beOn ? 1 : 0, "BE açık", display = display.none)
+plot(emaH, "Trend EMA", color = color.orange)

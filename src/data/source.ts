@@ -116,6 +116,46 @@ export function heikinAshi(b: BarsData): BarsData {
   return { ...b, open: o, high: h, low: l, close: c };
 }
 
+/** Mumları daha büyük zaman dilimine toplar (Binance mumları gibi, epoch hizalı). */
+export function resample(b: BarsData, tfSec: number): BarsData {
+  const out = {
+    time: [] as number[],
+    open: [] as number[],
+    high: [] as number[],
+    low: [] as number[],
+    close: [] as number[],
+    volume: [] as number[],
+  };
+  for (let i = 0; i < b.time.length; i++) {
+    const t = Math.floor(b.time[i]! / (tfSec * 1000)) * tfSec * 1000;
+    const k = out.time.length - 1;
+    if (k >= 0 && out.time[k] === t) {
+      out.high[k] = Math.max(out.high[k]!, b.high[i]!);
+      out.low[k] = Math.min(out.low[k]!, b.low[i]!);
+      out.close[k] = b.close[i]!;
+      out.volume[k]! += b.volume[i]!;
+    } else {
+      out.time.push(t);
+      out.open.push(b.open[i]!);
+      out.high.push(b.high[i]!);
+      out.low.push(b.low[i]!);
+      out.close.push(b.close[i]!);
+      out.volume.push(b.volume[i]!);
+    }
+  }
+  return {
+    time: Float64Array.from(out.time),
+    open: Float64Array.from(out.open),
+    high: Float64Array.from(out.high),
+    low: Float64Array.from(out.low),
+    close: Float64Array.from(out.close),
+    volume: Float64Array.from(out.volume),
+    tfSec,
+    symbol: b.symbol,
+    lastRealtime: false,
+  };
+}
+
 export function sliceBars(b: BarsData, from: number): BarsData {
   return {
     ...b,
