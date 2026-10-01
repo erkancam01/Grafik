@@ -62,6 +62,10 @@ interface Props {
   onNeedMore: () => void;
   /** Bu zaman aralığını göster (ör. strateji işlem listesinden seçilen işlem); `seq` her istekte artar. */
   focus?: { from: number; to: number; seq: number } | null;
+  /** Göstergelerden bağımsız ek işaretler (ör. yapay zekâ puanı); yüklü mumlarda olmayan zamanlar atlanır. */
+  extraMarkers?: MarkerSpec[];
+  /** Gösterge satırlarının altında ek satır (ör. yapay zekâ notu). */
+  notice?: ReactNode;
 }
 
 interface Palette {
@@ -109,7 +113,7 @@ function chartOptions(t: Theme, intraday: boolean) {
   };
 }
 
-export function ChartView({ bars, viewKey, theme, indicators, header, renderControls, onNeedMore, focus }: Props) {
+export function ChartView({ bars, viewKey, theme, indicators, header, renderControls, onNeedMore, focus, extraMarkers, notice }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -188,6 +192,7 @@ export function ChartView({ bars, viewKey, theme, indicators, header, renderCont
     [visibleOutputs, bars],
   );
   const colorsKey = useMemo(() => visibleOutputs.map((i) => `${i.uid}:${i.rev}`).join("|"), [visibleOutputs]);
+  const extraKey = useMemo(() => (extraMarkers ?? []).map((m) => `${m.time}:${m.text ?? ""}:${m.color}`).join("|"), [extraMarkers]);
 
   // mumlar + hacim
   useEffect(() => {
@@ -378,12 +383,16 @@ export function ChartView({ bars, viewKey, theme, indicators, header, renderCont
         NL.markers.push(createSeriesMarkers(first, paneMs.sort((a, b) => a.time - b.time) as never));
       }
     }
+    if (extraMarkers?.length) {
+      const mevcut = new Set(times);
+      overlayMarkers.push(...extraMarkers.filter((m) => mevcut.has(m.time)));
+    }
     candleMarkers.current?.setMarkers(overlayMarkers.sort((a, b) => a.time - b.time) as never);
     const panes = chart.panes();
     panes.forEach((pn, i) => pn.setStretchFactor(i === 0 ? 3 : 1));
-    // yalnız çıktı/görünürlük değişince (canlı tikte değil)
+    // yalnız çıktı/görünürlük ya da ek işaretler değişince (canlı tikte değil)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [colorsKey, theme]);
+  }, [colorsKey, theme, extraKey]);
 
   // odak: seçilen zaman aralığına git
   useEffect(() => {
@@ -465,6 +474,7 @@ export function ChartView({ bars, viewKey, theme, indicators, header, renderCont
             </div>
           );
         })}
+        {notice}
       </div>
     </div>
   );

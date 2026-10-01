@@ -262,17 +262,15 @@ plot(slow, color=color.orange)`);
   await expect(page.getByTestId("legend-error")).toHaveCount(0);
 });
 
-/** Yapay zekâ kaydı örneği ("ai-yorum" dalındaki biçim): iki hafta yön tahmini, üçüncüde Al sinyali atlanmış. */
+/** Yapay zekâ kaydı örneği ("ai-yorum" dalındaki biçim): iki haftalık görünüm, bir günlük Al (72) ve bir haftalık Al (35). */
 function aiKaydi() {
-  const H = 7 * 86_400_000;
+  const GUN = 86_400_000;
+  const H = 7 * GUN;
   const T = Date.UTC(2026, 9, 5);
   const ai = (o: Record<string, unknown>) => ({
-    karar: "yok",
-    guven: 60,
-    yon: "yukari",
-    yonGuveni: 62,
+    puan: 60,
+    aciklama: "Fed faiz indirimi beklentisi sürüyor, dolar zayıf.",
     ozet: "Fed faiz indirimi beklentisi sürdü, dolar zayıfladı.",
-    gerekce: "Reel faizler düşüyor.",
     riskler: [],
     kaynaklar: [],
     model: "claude-opus-5-5",
@@ -282,64 +280,75 @@ function aiKaydi() {
     maliyet: 0.28,
     ...o,
   });
-  const hafta = (i: number, o: Record<string, unknown>) => ({
-    hafta: T + i * H,
-    zaman: T + i * H + 20 * 60_000,
-    zamaninda: true,
+  const olay = (tf: string, zaman: number, o: Record<string, unknown>) => ({
+    tf,
+    zaman,
     sinyal: "yok",
+    karar: zaman + 20 * 60_000,
+    zamaninda: true,
     pozisyon: false,
     acilis: 4250,
     oncekiKapanis: 4250,
     iz: 4470,
+    ai: null,
     aiHata: null,
     kapanis: null,
     ...o,
   });
   return {
-    surum: 1,
+    surum: 2,
     sembol: "PAXGUSDT",
     baslangic: T,
     guncelleme: T + 2 * H + 20 * 60_000,
-    haftalar: [
-      hafta(0, { ai: ai({ yon: "yukari" }), kapanis: 4310 }),
-      hafta(1, { acilis: 4310, ai: ai({ yon: "asagi" }), kapanis: 4400 }),
-      hafta(2, {
+    olaylar: [
+      olay("1w", T, { ai: ai({ puan: 64 }), kapanis: 4310 }),
+      olay("1w", T + H, { acilis: 4310, ai: ai({ puan: 38, aciklama: "Dolar güçleniyor, faizler yükseliyor." }), kapanis: 4400 }),
+      olay("1d", T + H + 2 * GUN, {
+        sinyal: "al",
+        pozisyon: true,
+        acilis: 4330,
+        ai: ai({
+          puan: 72,
+          aciklama: "Zayıf istihdam verisi indirim beklentisini artırdı; Al sinyaline katılıyorum.",
+          kaynaklar: [{ baslik: "Altın zayıf veriyle yükseldi", url: "https://example.com/altin", tarih: "2026-10-14" }],
+        }),
+      }),
+      olay("1w", T + 2 * H, {
         sinyal: "al",
         pozisyon: true,
         acilis: 4400,
-        ai: ai({
-          karar: "atla",
-          guven: 64,
-          yon: "asagi",
-          yonGuveni: 58,
-          ozet: "Güçlü istihdam verisi faiz indirimi beklentisini zayıflattı.",
-          gerekce: "Dolar toparlanıyor; sinyal aşırı alım bölgesinde.",
-          riskler: ["Jeopolitik gerginlik altını destekleyebilir"],
-          kaynaklar: [{ baslik: "Altın haftaya düşüşle başladı", url: "https://example.com/altin", tarih: "2026-10-18" }],
-        }),
+        ai: ai({ puan: 35, aciklama: "Güçlü enflasyon Fed'i şahin tutuyor; haftalık Al sinyaline katılmıyorum.", riskler: ["Jeopolitik gerginlik"] }),
       }),
     ],
-    islemler: [{ giris: T + 2 * H, girisFiyat: 4400, cikis: null, cikisFiyat: 4380, getiri: -0.55, acik: true }],
+    islemler: {
+      "1d": [{ giris: T + H + 2 * GUN, girisFiyat: 4330, cikis: null, cikisFiyat: 4380, getiri: 1.1, acik: true }],
+      "1w": [{ giris: T + 2 * H, girisFiyat: 4400, cikis: null, cikisFiyat: 4380, getiri: -0.55, acik: true }],
+    },
   };
 }
 
-test("yapay zekâ yorumu: son hafta, iki defter, geçmiş", async ({ page }, info) => {
+test("yapay zekâ puanı: haftanın puanı, son günlük sinyal, defterler, geçmiş", async ({ page }, info) => {
   const errs = collectErrors(page);
   await page.route("https://raw.githubusercontent.com/**", (r) => r.fulfill({ json: aiKaydi() }));
   await page.goto("/?demo");
   await page.getByTestId("ai-button").click();
   const sheet = page.getByTestId("ai-sheet");
-  await expect(sheet.getByTestId("ai-son")).toContainText("Eki 2026 haftası");
-  await expect(sheet.getByTestId("ai-son")).toContainText("AL");
-  await expect(sheet.getByTestId("ai-karar")).toContainText("Atla");
-  await expect(sheet.getByTestId("ai-karar")).toContainText("güven %64");
-  await expect(sheet.getByTestId("ai-kaynaklar").getByRole("link")).toHaveAttribute("href", "https://example.com/altin");
-  await expect(sheet.getByTestId("ai-defter-duz")).toContainText("açık");
-  await expect(sheet.getByTestId("ai-defter-ai")).toContainText("0/0 kârlı");
-  await expect(sheet.getByTestId("ai-puan")).toContainText("1/2 doğru");
+  const hafta = sheet.getByTestId("ai-kart-1w");
+  await expect(hafta).toContainText("Haftalık AL sinyali");
+  await expect(hafta.getByTestId("ai-puan-degeri")).toContainText("35");
+  await expect(hafta).toContainText("Sat");
+  await expect(hafta.getByTestId("ai-aciklama")).toContainText("katılmıyorum");
+  const gun = sheet.getByTestId("ai-kart-1d");
+  await expect(gun).toContainText("Günlük AL sinyali");
+  await expect(gun.getByTestId("ai-puan-degeri")).toContainText("72");
+  await expect(gun).toContainText("Al");
+  await expect(gun.getByTestId("ai-kaynaklar").getByRole("link")).toHaveAttribute("href", "https://example.com/altin");
+  // puanı 50'nin altındaki haftalık Al defterlere girmez, 72 alan günlük Al girer
+  await expect(sheet.getByTestId("ai-defter-1w-duz")).toContainText("açık");
+  await expect(sheet.getByTestId("ai-defter-1w-ai")).not.toContainText("açık");
+  await expect(sheet.getByTestId("ai-defter-1d-ai")).toContainText("açık");
+  await expect(sheet.getByTestId("ai-puan")).toContainText("1/2");
   await expect(sheet.getByTestId("ai-gecmis").getByRole("listitem")).toHaveCount(2);
-  await expect(sheet.getByTestId("ai-gecmis")).toContainText("✓");
-  await expect(sheet.getByTestId("ai-gecmis")).toContainText("✗");
   await page.waitForTimeout(300);
   await page.screenshot({ path: `e2e/screenshots/ai-yorum-${info.project.name}.png` });
   await page.keyboard.press("Escape");
@@ -347,7 +356,29 @@ test("yapay zekâ yorumu: son hafta, iki defter, geçmiş", async ({ page }, inf
   expect(errs).toEqual([]);
 });
 
-test("yapay zekâ yorumu: kayıt yoksa bilgi verir", async ({ page }) => {
+test("yapay zekâ puanı grafikte: PAXG günlükte son sinyalin puanı ve açıklaması, dokununca panel", async ({ page }, info) => {
+  const errs = collectErrors(page);
+  await page.route("https://raw.githubusercontent.com/**", (r) => r.fulfill({ json: aiKaydi() }));
+  await page.goto("/?demo");
+  await expect(page.getByTestId("chart-header")).toContainText("XAUUSDT");
+  await expect(page.getByTestId("ai-not")).toHaveCount(0);
+  await page.getByTestId("symbol-button").click();
+  await page.getByTestId("symbol-list").getByRole("button", { name: /^PAXG\/USDT/ }).click();
+  await page.getByTestId("tf-1d").click();
+  const not = page.getByTestId("ai-not");
+  await expect(not).toContainText("AL sinyali");
+  await expect(not).toContainText("72/100 Al");
+  await expect(not).toContainText("katılıyorum");
+  await page.getByTestId("tf-1w").click();
+  await expect(not).toContainText("35/100 Sat");
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `e2e/screenshots/ai-grafik-${info.project.name}.png` });
+  await not.click();
+  await expect(page.getByTestId("ai-sheet")).toBeVisible();
+  expect(errs).toEqual([]);
+});
+
+test("yapay zekâ puanı: kayıt yoksa bilgi verir", async ({ page }) => {
   await page.route("https://raw.githubusercontent.com/**", (r) => r.fulfill({ status: 404, body: "404: Not Found" }));
   await page.goto("/?demo");
   await page.getByTestId("ai-button").click();

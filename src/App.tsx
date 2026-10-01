@@ -3,7 +3,10 @@
  * üst çubuk, grafik, çekmeceler.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAiKayit } from "./ai/useAiKayit";
+import { AI_SEMBOL, puanAdi, TF_SN, type Tf } from "./ai/yorum";
 import { ChartView, type ChartIndicator } from "./chart/ChartView";
+import { toChartTime, type MarkerSpec } from "./chart/render";
 import { DemoSource } from "./data/demo";
 import { GoldSource } from "./data/gold";
 import { BAR_INTERVALS, intervalById } from "./data/intervals";
@@ -21,7 +24,7 @@ import {
   type Settings,
   type UserScript,
 } from "./store/state";
-import { AiPanel } from "./ui/AiPanel";
+import { AiPanel, SINYAL_AD, tarih } from "./ui/AiPanel";
 import { IconAlert, IconChevron, IconEye, IconEyeOff, IconFx, IconGear, IconMoon, IconPencil, IconSpark, IconSun, IconX } from "./ui/icons";
 import { IndicatorSheet, type EditTarget, type SheetTab } from "./ui/IndicatorSheet";
 import { InputsDialog } from "./ui/InputsDialog";
@@ -344,6 +347,52 @@ export default function App() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const closeAi = useCallback(() => setAiOpen(false), []);
+  const [ai, aiYenile] = useAiKayit();
+  /** Yapay zekâ puanları yalnız kaydın sembolünde, günlük ve haftalık grafikte gösterilir. */
+  const aiTf: Tf | null = symbol === AI_SEMBOL && (iv.id === "1d" || iv.id === "1w") ? iv.id : null;
+  const aiOlaylar = useMemo(() => (ai.tur === "tamam" && aiTf ? ai.kayit.olaylar.filter((e) => e.tf === aiTf) : []), [ai, aiTf]);
+  const aiIsaretler = useMemo<MarkerSpec[]>(
+    () =>
+      aiOlaylar
+        .filter((e) => e.sinyal !== "yok" && e.ai)
+        .map((e) => {
+          const r = puanAdi(e.ai!.puan).renk;
+          return {
+            // sinyal mumu: işlem mumundan bir önceki (UT Bot'un Al/Sat etiketiyle aynı mum)
+            time: toChartTime(e.zaman - TF_SN[e.tf] * 1000),
+            position: e.sinyal === "al" ? "belowBar" : "aboveBar",
+            shape: "circle",
+            color: r === "up" ? "#26a69a" : r === "down" ? "#ef5350" : "#787b86",
+            text: `YZ ${e.ai!.puan}`,
+            size: 0.8,
+          };
+        }),
+    [aiOlaylar],
+  );
+  const aiSon = aiOlaylar.at(-1);
+  const aiNot = aiSon ? (
+    <button
+      type="button"
+      className="pointer-events-auto flex max-w-full items-center gap-1.5 rounded bg-panel/80 px-1.5 py-0.5 text-left"
+      onClick={() => setAiOpen(true)}
+      data-testid="ai-not"
+    >
+      <IconSpark size={13} className="shrink-0 text-accent" />
+      <span className="shrink-0 text-muted">
+        YZ · {aiSon.sinyal === "yok" ? "haftanın puanı" : `${SINYAL_AD[aiSon.sinyal]} sinyali`} {tarih(aiSon.zaman)}:
+      </span>
+      {aiSon.ai ? (
+        <>
+          <b className={`shrink-0 tabular-nums ${{ up: "text-up", down: "text-down", muted: "text-fg" }[puanAdi(aiSon.ai.puan).renk]}`}>
+            {aiSon.ai.puan}/100 {puanAdi(aiSon.ai.puan).ad}
+          </b>
+          <span className="min-w-0 truncate text-muted">— {aiSon.ai.aciklama}</span>
+        </>
+      ) : (
+        <span className="text-subtle">puan yok</span>
+      )}
+    </button>
+  ) : null;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [tab, setTab] = useState<SheetTab>("library");
   const [edit, setEdit] = useState<EditTarget>({ id: null, name: "", code: NEW_SCRIPT });
@@ -492,6 +541,8 @@ export default function App() {
           renderControls={controls}
           onNeedMore={loadMore}
           focus={focus}
+          extraMarkers={aiIsaretler}
+          notice={aiNot}
         />
         {!bars && !dataErr && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted">Mumlar yükleniyor…</div>
@@ -530,7 +581,7 @@ export default function App() {
         />
       )}
 
-      <AiPanel open={aiOpen} onClose={closeAi} />
+      <AiPanel open={aiOpen} onClose={closeAi} durum={ai} onYenile={aiYenile} />
       <SymbolPicker
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}

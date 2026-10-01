@@ -1,15 +1,17 @@
 /**
- * Haftalık UT Bot durumunu Claude'a verir: Claude son haftanın haberlerini web'de arar, karar_ver aracıyla kararını ve
- * yorumunu bildirir. Ret (refusal) olursa sunucu tarafı yedek model devreye girer (fallbacks: "default").
+ * UT Bot sinyalini (günlük ya da haftalık) ya da haftanın durumunu Claude'a verir: Claude son haberleri web'de arar ve
+ * degerlendir aracıyla 0–100 arası al-sat puanını ve açıklamasını bildirir (0 = kesin sat, 50 = nötr, 100 = kesin al).
+ * Ret (refusal) olursa sunucu tarafı yedek model devreye girer (fallbacks: "default").
  */
 import type Anthropic from "@anthropic-ai/sdk";
 import type { BetaContentBlock, BetaMessage, BetaMessageParam, BetaMessageStreamParams, BetaTool } from "@anthropic-ai/sdk/resources/beta/messages/messages";
-import type { AiCevap, Karar, Kaynak, Sinyal, Yon } from "../../src/ai/yorum";
+import type { Degerlendirme, Kaynak, Sinyal, Tf } from "../../src/ai/yorum";
 
 export const MODEL = "claude-opus-5-5";
 /** Fiyat (USD / milyon token) ve web araması başına. Yedek model yanıtlarsa yaklaşık kalır. */
 const FIYAT = { girdi: 4, cikti: 20, onbellekYaz: 5, onbellekOku: 0.4, arama: 0.01 };
 const EN_COK_ARAMA = 6;
+const GUN = 86_400_000;
 
 /** Kullanılan istemci parçası (testlerde sahtesi verilir). */
 export interface ClaudeIstemci {
@@ -19,8 +21,9 @@ export interface ClaudeIstemci {
 export interface Baglam {
   /** Karar anı (ms). */
   simdi: number;
-  /** Haftanın açılışı (ms, pazartesi 00:00 UTC). */
-  hafta: number;
+  tf: Tf;
+  /** İşlem mumunun açılışı (ms, UTC) = sinyal mumunun kapanışı. */
+  zaman: number;
   sinyal: Sinyal;
   pozisyon: boolean;
   /** Açık UT Bot işlemi (varsa). */
@@ -28,33 +31,24 @@ export interface Baglam {
   acilis: number;
   oncekiKapanis: number;
   iz: number;
-  /** Son haftalar (eskiden yeniye; son eleman geçen hafta). */
+  /** Son mumlar (eskiden yeniye; son eleman sinyal mumu). */
   mumlar: { zaman: number; acilis: number; yuksek: number; dusuk: number; kapanis: number }[];
 }
 
-export const KARAR_ARACI: BetaTool = {
-  name: "karar_ver",
-  description:
-    "Haftalık kararını ve yorumunu kaydeder. Haberleri araştırdıktan sonra bir kez çağır. Tüm metinler Türkçe olsun.",
+export const PUAN_ARACI: BetaTool = {
+  name: "degerlendir",
+  description: "Al-sat puanını ve açıklamasını kaydeder. Haberleri araştırdıktan sonra bir kez çağır. Tüm metinler Türkçe olsun.",
   strict: true,
   input_schema: {
     type: "object",
     properties: {
-      karar: {
-        type: "string",
-        enum: ["al", "atla", "yok"],
-        description: "UT Bot Al sinyali verdiyse 'al' (long aç) ya da 'atla' (bu sinyali geç). Sinyal Al değilse 'yok'.",
+      puan: {
+        type: "integer",
+        description: "0–100 al-sat puanı: 0 kesinlikle sat (altın düşecek), 50 nötr, 100 kesinlikle al (altın yükselecek).",
       },
-      guven: { type: "integer", description: "Karara güvenin, 0–100." },
-      yon: {
-        type: "string",
-        enum: ["yukari", "asagi", "kararsiz"],
-        description: "Bu haftanın kapanışı açılışın üstünde mi (yukari) altında mı (asagi) olacak; emin değilsen kararsiz.",
-      },
-      yon_guveni: { type: "integer", description: "Yön tahminine güvenin, 50–100." },
-      ozet: { type: "string", description: "Son haftanın altınla ilgili haberlerinin 2–4 cümlelik özeti." },
-      gerekce: { type: "string", description: "Kararın ve yön tahmininin kısa gerekçesi (en çok 5 cümle)." },
-      riskler: { type: "array", items: { type: "string" }, description: "Kararı bozabilecek en önemli 1–3 risk." },
+      aciklama: { type: "string", description: "Puanın açıklaması: haberlere ve grafiğe dayanarak 2–4 cümle." },
+      ozet: { type: "string", description: "Altınla ilgili son haberlerin 2–3 cümlelik özeti." },
+      riskler: { type: "array", items: { type: "string" }, description: "Görüşünü bozabilecek en önemli 1–3 risk." },
       kaynaklar: {
         type: "array",
         description: "Dayandığın en önemli 1–5 haber (aramada bulduğun bağlantılar).",
@@ -70,64 +64,72 @@ export const KARAR_ARACI: BetaTool = {
         },
       },
     },
-    required: ["karar", "guven", "yon", "yon_guveni", "ozet", "gerekce", "riskler", "kaynaklar"],
+    required: ["puan", "aciklama", "ozet", "riskler", "kaynaklar"],
     additionalProperties: false,
   },
 };
 
-const SISTEM = `Sen altın piyasasını izleyen bir analistsin. Her pazartesi, haftalık mum kapandıktan hemen sonra çağrılırsın.
-Elinde altına bağlı PAXG/USDT'nin (1 PAXG = 1 ons altın) haftalık mumları ve UT Bot göstergesinin durumu var.
-UT Bot: haftalık grafik, varsayılan ayarlar (anahtar değer 1, ATR 10), yalnız long — Al sinyalinde long açılır,
-Sat sinyalinde kapatılır; işlemler sinyalden sonraki haftanın açılışında. Bu ayarın 2021–2026 geçmişi: 16 işlem,
-%62,5'i kârlı, toplam +%68 (al-ve-tut +%115). Yani bir sinyali atlamanın da bedeli olabilir.
+const SISTEM = `Sen altın piyasasını izleyen bir analistsin. Elinde altına bağlı PAXG/USDT'nin (1 PAXG = 1 ons altın) mumları
+ve UT Bot göstergesinin durumu var. UT Bot varsayılan ayarlarla (anahtar değer 1, ATR 10) çalışır: Al sinyalinde long
+açılır, Sat sinyalinde kapatılır; işlem sinyal mumundan sonraki mumun açılışında. 2021–2026 geçmişi (yalnız long):
+günlük grafikte 93 işlem, %42'si kârlı, toplam +%69 (kazançlar kayıplardan büyük); haftalık grafikte 16 işlem, %62,5'i
+kârlı, toplam +%68. Aynı dönemde altını alıp tutmak +%116.
 
-Görevin:
-1. web_search ile son 7 günün altınla ilgili haberlerini araştır: Fed ve faiz beklentileri, ABD doları, enflasyon ve
-   istihdam verileri, jeopolitik gelişmeler, merkez bankası alımları, altın ETF akışları. Birkaç arama yeterli.
-   Yalnız karar anından önceki haberleri kullan.
-2. UT Bot bu hafta Al sinyali verdiyse karar ver: "al" (sinyali uygula) ya da "atla" (geç; bir sonraki Al sinyaline
-   kadar pozisyon açılmaz). Sinyal yoksa ya da Sat ise karar "yok".
-3. Her hafta, bu haftanın kapanışının açılışın üstünde mi altında mı olacağını tahmin et; emin değilsen "kararsiz".
-4. Sonunda karar_ver aracını bir kez çağır.
+Görevin, sana verilen sinyal (ya da haftanın genel durumu) için 0–100 arası bir al-sat puanı vermek:
+0 = kesinlikle sat, 25 = sat, 50 = nötr, 75 = al, 100 = kesinlikle al.
+Puan, sinyalin yönünden bağımsız olarak senin görüşündür: Al sinyaline 30 verirsen sinyale katılmıyorsun demektir; Sat
+sinyaline 30 verirsen satışa katılıyorsun demektir. Ufuk: günlük sinyalde önümüzdeki birkaç gün ile birkaç hafta,
+haftalık sinyalde birkaç hafta ile birkaç ay, sinyalsiz haftalık görünümde bu haftanın kapanışı.
 
-Bu, gerçek para kullanılmayan, ileriye dönük bir denemedir: kararların kayda geçer ve UT Bot'un kendi sonuçlarıyla
-karşılaştırılır. Tahmin yapmak senin görevin; belirsizliği güven puanlarıyla ifade et.`;
+Adımlar:
+1. web_search ile altınla ilgili son haberleri araştır: Fed ve faiz beklentileri, ABD doları, enflasyon ve istihdam
+   verileri, jeopolitik gelişmeler, merkez bankası alımları, altın ETF akışları. Birkaç arama yeterli. Yalnız karar
+   anından önceki haberleri kullan.
+2. Haberleri ve verilen mumları birlikte değerlendir.
+3. Sonunda degerlendir aracını bir kez çağır.
+
+Bu, gerçek para kullanılmayan, ileriye dönük bir denemedir: puanların kayda geçer ve UT Bot'un kendi sonuçlarıyla
+karşılaştırılır. Kararsızsan 50'ye yakın, eminsen uçlara yakın puan ver.`;
 
 const gun = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const saat = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T", " ");
 const fiyat = (x: number) => x.toFixed(2);
-
-const SINYAL_METNI: Record<Sinyal, string> = {
-  al: "AL — geçen haftanın kapanışında Al sinyali; bu haftanın açılışında long açılacak (senin onayınla)",
-  sat: "SAT — geçen haftanın kapanışında Sat sinyali; long bu haftanın açılışında kapatıldı",
-  yok: "yok — sinyal yok",
+const TF_METNI: Record<Tf, { ad: string; mum: string; bu: string }> = {
+  "1d": { ad: "Günlük", mum: "dünkü günlük mumun", bu: "bugünün" },
+  "1w": { ad: "Haftalık", mum: "geçen haftanın", bu: "bu haftanın" },
 };
 
 export function istem(b: Baglam): string {
-  const satirlar = b.mumlar.map((m) => `| ${gun(m.zaman)} | ${fiyat(m.acilis)} | ${fiyat(m.yuksek)} | ${fiyat(m.dusuk)} | ${fiyat(m.kapanis)} |`);
+  const t = TF_METNI[b.tf];
+  const sinyal =
+    b.sinyal === "al"
+      ? `AL — ${t.mum} kapanışında Al sinyali; long ${t.bu} açılışında açılır`
+      : b.sinyal === "sat"
+        ? `SAT — ${t.mum} kapanışında Sat sinyali; long ${t.bu} açılışında kapatılır (iki yönlü işlemde short açılır)`
+        : "yok — bu hafta yeni sinyal yok; haftanın genel görünümü için puan ver";
   const poz = b.acikIslem
-    ? `long (giriş ${gun(b.acikIslem.giris)}, ${fiyat(b.acikIslem.girisFiyat)}; şimdi %${(((b.acilis / b.acikIslem.girisFiyat) - 1) * 100).toFixed(1)})`
+    ? `long (giriş ${gun(b.acikIslem.giris)}, ${fiyat(b.acikIslem.girisFiyat)}; şimdi %${((b.acilis / b.acikIslem.girisFiyat - 1) * 100).toFixed(1)})`
     : "yok";
+  const bitis = b.tf === "1w" ? ` – ${gun(b.zaman + 6 * GUN)}` : "";
   return [
     `Karar anı: ${saat(b.simdi)} UTC`,
-    `Bu hafta: ${gun(b.hafta)} (pazartesi) – ${gun(b.hafta + 6 * 86_400_000)}`,
-    `UT Bot sinyali: ${SINYAL_METNI[b.sinyal]}`,
-    `UT Bot pozisyonu (bu haftanın açılışından sonra): ${b.pozisyon ? poz : "yok"}`,
-    `İz süren stop (geçen hafta kapanışında): ${fiyat(b.iz)} (kapanışa uzaklık %${(((b.oncekiKapanis - b.iz) / b.oncekiKapanis) * 100).toFixed(1)})`,
-    `Geçen haftanın kapanışı: ${fiyat(b.oncekiKapanis)}; bu haftanın açılışı: ${fiyat(b.acilis)}`,
+    `Grafik: ${t.ad} (PAXG/USDT). Mum: ${gun(b.zaman)}${bitis}`,
+    `UT Bot sinyali: ${sinyal}`,
+    `UT Bot pozisyonu (yalnız long, bu mumun açılışından sonra): ${b.pozisyon ? poz : "yok"}`,
+    `İz süren stop (sinyal mumunun kapanışında): ${fiyat(b.iz)} (kapanışa uzaklık %${(((b.oncekiKapanis - b.iz) / b.oncekiKapanis) * 100).toFixed(1)})`,
+    `Önceki kapanış: ${fiyat(b.oncekiKapanis)}; bu mumun açılışı: ${fiyat(b.acilis)}`,
     "",
-    "Son haftalık mumlar (PAXG/USDT, hafta başı tarihiyle):",
-    "| hafta | açılış | yüksek | düşük | kapanış |",
+    `Son ${t.ad.toLowerCase()} mumlar (açılış tarihiyle):`,
+    "| tarih | açılış | yüksek | düşük | kapanış |",
     "|---|---|---|---|---|",
-    ...satirlar,
+    ...b.mumlar.map((m) => `| ${gun(m.zaman)} | ${fiyat(m.acilis)} | ${fiyat(m.yuksek)} | ${fiyat(m.dusuk)} | ${fiyat(m.kapanis)} |`),
     "",
-    "Haberleri araştır, sonra karar_ver aracıyla kararını bildir.",
+    "Haberleri araştır, sonra degerlendir aracıyla 0–100 al-sat puanını ve açıklamasını bildir.",
   ].join("\n");
 }
 
 export class YanitYok extends Error {}
 
-const SECENEK = <T extends string>(x: unknown, izinli: readonly T[], yedek: T): T => (izinli.includes(x as T) ? (x as T) : yedek);
 const SINIRLA = (x: unknown, lo: number, hi: number, yedek: number) => (typeof x === "number" && Number.isFinite(x) ? Math.min(hi, Math.max(lo, Math.round(x))) : yedek);
 const METIN = (x: unknown) => (typeof x === "string" ? x.trim() : "");
 
@@ -141,29 +143,25 @@ export function aramaBaglantilari(bloklar: BetaContentBlock[]): Set<string> {
   return urls;
 }
 
-export function cevabiOku(girdi: unknown, sinyal: Sinyal, bulunan: Set<string>): Omit<AiCevap, "model" | "arama" | "girdiToken" | "ciktiToken" | "maliyet"> {
+export function cevabiOku(girdi: unknown, bulunan: Set<string>): Pick<Degerlendirme, "puan" | "aciklama" | "ozet" | "riskler" | "kaynaklar"> {
   const g = (girdi ?? {}) as Record<string, unknown>;
-  // Al haftası dışında karar yok; Al haftasında "yok" gelirse UT Bot'a uyulur (puanlamada "al" gibi).
-  const karar: Karar = sinyal === "al" ? SECENEK(g.karar, ["al", "atla", "yok"] as const, "yok") : "yok";
+  if (typeof g.puan !== "number" || !Number.isFinite(g.puan)) throw new YanitYok("Puan gelmedi");
   const kaynaklar: Kaynak[] = (Array.isArray(g.kaynaklar) ? g.kaynaklar : [])
     .map((k) => k as Record<string, unknown>)
     .map((k) => ({ baslik: METIN(k.baslik), url: METIN(k.url), tarih: METIN(k.tarih) }))
     .filter((k) => k.url && bulunan.has(k.url))
     .slice(0, 5);
   return {
-    karar,
-    guven: SINIRLA(g.guven, 0, 100, 50),
-    yon: SECENEK(g.yon, ["yukari", "asagi", "kararsiz"] as const, "kararsiz") as Yon,
-    yonGuveni: SINIRLA(g.yon_guveni, 50, 100, 50),
+    puan: SINIRLA(g.puan, 0, 100, 50),
+    aciklama: METIN(g.aciklama),
     ozet: METIN(g.ozet),
-    gerekce: METIN(g.gerekce),
     riskler: (Array.isArray(g.riskler) ? g.riskler : []).map(METIN).filter(Boolean).slice(0, 3),
     kaynaklar,
   };
 }
 
-/** Claude'a sorar; karar_ver çağrısı gelene kadar (en çok birkaç tur) sürdürür. */
-export async function yorumla(istemci: ClaudeIstemci, b: Baglam): Promise<AiCevap> {
+/** Claude'a sorar; degerlendir çağrısı gelene kadar (en çok birkaç tur) sürdürür. */
+export async function yorumla(istemci: ClaudeIstemci, b: Baglam): Promise<Degerlendirme> {
   const mesajlar: BetaMessageParam[] = [{ role: "user", content: istem(b) }];
   const bloklar: BetaContentBlock[] = [];
   let girdi = 0;
@@ -182,7 +180,7 @@ export async function yorumla(istemci: ClaudeIstemci, b: Baglam): Promise<AiCeva
         thinking: { type: "adaptive" },
         output_config: { effort: "high" },
         system: SISTEM,
-        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: EN_COK_ARAMA }, KARAR_ARACI],
+        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: EN_COK_ARAMA }, PUAN_ARACI],
         messages: mesajlar,
       })
       .finalMessage();
@@ -199,18 +197,18 @@ export async function yorumla(istemci: ClaudeIstemci, b: Baglam): Promise<AiCeva
     if (m.stop_reason === "refusal") {
       throw new YanitYok(`Claude yanıt vermedi (ret${m.stop_details?.category ? `: ${m.stop_details.category}` : ""})`);
     }
-    const arac = m.content.find((x) => x.type === "tool_use" && x.name === KARAR_ARACI.name);
+    const arac = m.content.find((x) => x.type === "tool_use" && x.name === PUAN_ARACI.name);
     if (arac && arac.type === "tool_use") {
-      return { ...cevabiOku(arac.input, b.sinyal, aramaBaglantilari(bloklar)), model, arama, girdiToken: girdi, ciktiToken: cikti, maliyet };
+      return { ...cevabiOku(arac.input, aramaBaglantilari(bloklar)), model, arama, girdiToken: girdi, ciktiToken: cikti, maliyet };
     }
     if (m.stop_reason === "max_tokens") throw new YanitYok("Yanıt yarıda kesildi (max_tokens)");
     mesajlar.push({ role: "assistant", content: m.content });
     if (m.stop_reason === "pause_turn") continue; // sunucu tarafı arama döngüsü sürüyor: aynen devam
     if (hatirlatildi) break;
     hatirlatildi = true;
-    mesajlar.push({ role: "user", content: "Lütfen kararını ve yorumunu karar_ver aracıyla bildir." });
+    mesajlar.push({ role: "user", content: "Lütfen puanını ve açıklamanı degerlendir aracıyla bildir." });
   }
-  throw new YanitYok("Claude karar_ver aracını çağırmadı");
+  throw new YanitYok("Claude degerlendir aracını çağırmadı");
 }
 
 /** Gerçek istemci (ANTHROPIC_API_KEY ortam değişkeninden). */
