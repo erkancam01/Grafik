@@ -174,7 +174,39 @@ sermayenin %100'ü (uygulamanın Strateji Test Aracı'yla aynı motor; `tools/ba
 - Altın 2021'den beri yükselişte olduğu için short sinyalleri zarar ettiriyor: ayarlardan **İşlem yönü → Yalnız long**.
 - Yapay zekâ ile haber filtresi düşüncesi: geçmişe dönük sınanamaz (model, haberlerin sonucunu biliyor); haftalık
   işlemlerde sinyali haberle onaylayan bir filtrenin düz UT Bot'u geçmesi için %70'in üstünde isabet gerekir (benzetim:
-  %50 isabette net ~+%30, %60'ta ~+%44, %70'te ~+%61, %80'de ~+%79; düz UT Bot +%68).
+  %50 isabette net ~+%30, %60'ta ~+%44, %70'te ~+%61, %80'de ~+%79; düz UT Bot +%68). Bu yüzden ileriye dönük
+  deneniyor: aşağıdaki yapay zekâ yorumcusu.
+
+## Yapay zekâ yorumcusu (haftalık UT Bot + haberler, kâğıt üzerinde deneme)
+
+Üst çubuktaki **✦ Yapay zekâ** düğmesi. Her pazartesi 00:20 UTC'de (03:20 TSİ), haftalık mum kapandıktan sonra
+`.github/workflows/ai-yorum.yml` çalışır (`tools/ai/haftalik.ts`):
+
+1. PAXG/USDT haftalık mumlarında **UT Bot Strateji** (varsayılan ayarlar, yalnız long) uygulamanın Pine motoruyla
+   çalışır; geçen haftanın kapanışındaki sinyal bulunur (Al / Sat / yok). İşlemler bu haftanın açılışından.
+2. **Claude** (`claude-opus-5-5`, web araması) son 7 günün altın haberlerini okur (Fed ve faiz, dolar, enflasyon,
+   jeopolitik, merkez bankaları, ETF akışları). **Al haftasında "uygula" ya da "atla"** der; **her hafta** haftanın
+   yönünü tahmin eder (yukarı / aşağı / kararsız); özet, gerekçe, riskler ve dayandığı haberleri yazar (yalnız
+   aramada gerçekten dönen bağlantılar tutulur). Claude ret verirse sunucu tarafında yedek modele geçilir
+   (`fallbacks: "default"`); yanıtı veren model kayda yazılır.
+3. Kayıt `ai-yorum` dalına (`ai/yorumlar.json`) yazılır; uygulama oradan okur.
+
+Puanlama (5 Ekim 2026'dan itibaren; öncesi "deneme öncesi" olarak gösterilir):
+
+- **İki kâğıt defter:** UT Bot olduğu gibi ve yapay zekâ süzgeçli (atladığı işlemler hariç; çıkış ikisinde de UT
+  Bot'un Sat sinyali). Getiriler komisyon (%0,05/taraf) düşülmüş, bileşik. Atlanan işlemlerin kaçının zararlı
+  olduğu ayrıca sayılır.
+- **Yön tahmini isabeti:** kapanan haftalarda, kararsızlar hariç.
+- Karar haftanın açılışından en geç 3 saat sonra verilmediyse sayılmaz (haberlerde ileriyi görmek olur); o hafta
+  yapay zekâ defteri UT Bot'a uyar.
+- Haftalık UT Bot yılda ~3 Al sinyali verir: süzgecin değerini görmek yıllar sürer. Yön tahmini (yılda ~52) daha
+  çabuk fikir verir.
+
+**Kurulum:** Anthropic API anahtarı gerekir (console.anthropic.com; claude.ai aboneliğinden ayrı, kullandıkça
+ödenir). GitHub'da depo → **Settings → Secrets and variables → Actions → New repository secret**, ad
+`ANTHROPIC_API_KEY`. Anahtar yoksa iş yine çalışır, yalnız UT Bot kaydını tutar. Tahmini maliyet hafta başına
+~$0,2–0,5 (Opus 5.5: milyon token başına $4 girdi / $20 çıktı, arama başına $0,01). Elle çalıştırma: **Actions →
+Yapay zekâ yorumu → Run workflow** (o haftanın yorumu yoksa sorulur; geç verildiği için sayılmaz).
 
 ## Pine Script desteği
 
@@ -247,12 +279,13 @@ python3 tools/backtest/import_gold_data.py          # data/altin → .cache/bars
 npm run bt:final -- --study-g --coins SPOT-PAXGUSDT,XAUUSDT,PAXGUSDT   # Rejim Strateji altında
 python3 tools/backtest/regime_study.py --coins SPOT-PAXGUSDT --tag altin --min-trades 40
 node --import jiti/register tools/backtest/gold_utbot.ts  # altında UT Bot: 1 hafta / 1 gün / 4 saat / 1 saat
+node --import jiti/register tools/ai/haftalik.ts --kayit /tmp/yorumlar.json --deneme  # yapay zekâ yorumcusu, Claude'suz deneme
 BT_REAL=1 npx playwright test e2e/real.spec.ts      # uygulamada gerçek altın verisiyle aynı sonuç + ekran görüntüsü
 npm run bt:sweep -- tools/backtest/specs/r1_rejim.ts  # Rejim Strateji, motorla 2021-2026 (laboratuvarla eşleşme)
 ```
 
 Yapı: `src/pine/` (lexer → parser → derleyici → yürütme, `strategy.ts` emir/işlem motoru, `builtins/`, `library/`),
-`src/data/` (Binance, demo),
+`src/data/` (Binance, demo), `src/ai/` + `tools/ai/` (yapay zekâ yorumcusu),
 `src/indicators/` (hesap akışı), `src/worker/` (yorumlayıcı ayrı iş parçacığında), `src/chart/` (lightweight-charts),
 `src/ui/`.
 
