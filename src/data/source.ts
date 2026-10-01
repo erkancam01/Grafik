@@ -21,6 +21,10 @@ export interface LiveBar {
 export interface DataSource {
   readonly name: string;
   readonly label: string;
+  /** Kaynak yalnız bu sembolleri veriyorsa (altın uygulaması); yoksa her sembol. */
+  readonly available?: readonly string[];
+  /** Sembole göre kaynak etiketi (ör. vadeli / spot); yoksa `label`. */
+  labelFor?(symbol: string): string;
   symbols(): Promise<SymbolInfo[]>;
   /** `endTime` (ms) öncesindeki en çok `limit` mum; endTime yoksa en yeniler. */
   klines(symbol: string, interval: string, limit: number, endTime?: number): Promise<BarsData>;
@@ -126,8 +130,10 @@ export function resample(b: BarsData, tfSec: number): BarsData {
     close: [] as number[],
     volume: [] as number[],
   };
+  // Haftalık mumlar Binance ve TradingView'daki gibi pazartesi 00:00 UTC'de başlar (1970-01-01 perşembeydi: +4 gün)
+  const off = tfSec === 604_800 ? 4 * 86_400_000 : 0;
   for (let i = 0; i < b.time.length; i++) {
-    const t = Math.floor(b.time[i]! / (tfSec * 1000)) * tfSec * 1000;
+    const t = Math.floor((b.time[i]! - off) / (tfSec * 1000)) * tfSec * 1000 + off;
     const k = out.time.length - 1;
     if (k >= 0 && out.time[k] === t) {
       out.high[k] = Math.max(out.high[k]!, b.high[i]!);

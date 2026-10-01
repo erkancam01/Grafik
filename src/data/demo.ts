@@ -6,15 +6,10 @@ import type { BarsData } from "../pine/types";
 import { intervalById } from "./intervals";
 import type { DataSource, LiveBar, SymbolInfo } from "./source";
 
+/** Yalnız altın (uygulama yalnız altın gösterir). */
 const BASE: Record<string, number> = {
-  BTCUSDT: 112_000,
-  ETHUSDT: 4_150,
-  SOLUSDT: 210,
-  BNBUSDT: 950,
-  XRPUSDT: 2.87,
-  DOGEUSDT: 0.241,
-  ADAUSDT: 0.81,
-  LINKUSDT: 22.4,
+  XAUUSDT: 4_190,
+  PAXGUSDT: 4_165,
 };
 
 function hash(s: string): number {
@@ -43,6 +38,7 @@ function logPriceAt(seed: number, minute: number): number {
 export class DemoSource implements DataSource {
   readonly name = "demo";
   readonly label = "Demo verisi (çevrimdışı)";
+  readonly available: readonly string[] = Object.keys(BASE);
 
   async symbols(): Promise<SymbolInfo[]> {
     return Object.entries(BASE).map(([symbol, price], i) => ({

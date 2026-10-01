@@ -87,6 +87,8 @@ export interface Job {
 
 export interface JobResult {
   trades: Trade[];
+  /** Dönem sonunda açık kalan işlem sayısı (uygulamanın "İşlemler (N)" sayısına dahil). */
+  openTrades: number;
   warnings: string[];
   bars: number;
   ms: number;
@@ -134,12 +136,13 @@ export class Runner {
   }
 
   /** Uygulamadaki gibi: grafiğin süresi + 400 üst zaman dilimi mumu, en yeni mumla biten. */
-  private extraAppLike(chart: BarsData, q: DataRequest): BarsData {
+  private extraAppLike(chart: BarsData, q: DataRequest, baseTf: "5m" | "15m" = "5m"): BarsData {
     const n = chart.time.length;
     const span = chart.time[n - 1]! - chart.time[0]! + chart.tfSec * 1000;
     const want = Math.min(50_000, Math.ceil(span / (q.tfSec * 1000)) + (q.tfSec >= chart.tfSec ? 400 : 0));
-    const all = this.barsTf(q.symbol, 300);
-    const tf = q.tfSec === 300 ? all : resample(all, q.tfSec);
+    const bs = BASE_SEC[baseTf];
+    const all = this.barsTf(q.symbol, bs, baseTf);
+    const tf = q.tfSec === bs ? all : resample(all, q.tfSec);
     const m = tf.time.length;
     const x = sliceTime(tf, tf.time[Math.max(0, m - want)]!, tf.time[m - 1]!);
     return q.heikinAshi ? heikinAshi(x) : x;
@@ -154,8 +157,7 @@ export class Runner {
     let to = job.to + DAY; // aralıktan sonra en az bir mum: açık pozisyon "Dönem sonu" ile kapanır
     let b = sliceTime(this.barsTf(job.symbol, tfSec, baseTf), from, to);
     if (job.appLike) {
-      if (baseTf !== "5m") throw new Error("appLike yalnız 5m tabanla");
-      const all = this.barsTf(job.symbol, tfSec);
+      const all = this.barsTf(job.symbol, tfSec, baseTf);
       const want = Math.min(50_000, Math.max(5000, Math.ceil((job.appLike.now - job.from) / (tfSec * 1000)) + 300));
       const n = all.time.length;
       b = sliceTime(all, all.time[Math.max(0, n - want)]!, all.time[n - 1]!);
@@ -175,7 +177,7 @@ export class Runner {
       if (r.ok) return { ...collect(r.output, b, inputs), bars: b.time.length, ms: performance.now() - t0 };
       if ("error" in r) throw new Error(`${job.symbol}: satır ${r.error.line}: ${r.error.message}`);
       if (r.needData.some((q) => q.tfSec < BASE_SEC[baseTf])) throw new Error(`${job.symbol}: veri isteği çözülemedi`);
-      for (const q of r.needData) extra[dataKey(q)] = job.appLike ? this.extraAppLike(b, q) : this.extraFor(from, to, q, baseTf);
+      for (const q of r.needData) extra[dataKey(q)] = job.appLike ? this.extraAppLike(b, q, baseTf) : this.extraFor(from, to, q, baseTf);
     }
     throw new Error(`${job.symbol}: request.security 5 turda çözülemedi`);
   }
@@ -227,7 +229,7 @@ function collect(out: PineOutput, b: BarsData, inputs: Record<string, unknown>):
       sl,
     };
   });
-  return { trades, warnings: out.warnings };
+  return { trades, openTrades: s.openTrades.length, warnings: out.warnings };
 }
 
 // ------------------------------------------------------------------ ölçütler

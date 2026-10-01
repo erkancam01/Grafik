@@ -30,7 +30,7 @@ COLS = ["open", "high", "low", "close", "volume"]
 
 
 def write_bars(df: pd.DataFrame, path: Path) -> None:
-    t = (df.index.asi8 // 1_000_000).astype("float64")  # ns → ms
+    t = df.index.as_unit("ms").asi8.astype("float64")  # dizinin çözünürlüğü ne olursa olsun ms
     cols = [t] + [df[c].to_numpy(dtype="float64") for c in COLS]
     with path.open("wb") as f:
         for c in cols:

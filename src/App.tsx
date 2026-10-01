@@ -4,8 +4,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChartView, type ChartIndicator } from "./chart/ChartView";
-import { detectBinance } from "./data/binance";
 import { DemoSource } from "./data/demo";
+import { GoldSource } from "./data/gold";
 import { BAR_INTERVALS, intervalById } from "./data/intervals";
 import { applyLiveBar, mergeBars, type DataSource, type SymbolInfo } from "./data/source";
 import { ExtraData, MAX_HISTORY, computeIndicator, loadHistory, type IndicatorResult } from "./indicators/compute";
@@ -58,7 +58,7 @@ export default function App() {
   const [settings, setSettings] = usePersistent<Settings>("grafik.settings", DEFAULT_SETTINGS);
   const [active, setActive] = usePersistent<ActiveIndicator[]>("grafik.indicators", DEFAULT_INDICATORS);
   const [scripts, setScripts] = usePersistent<UserScript[]>("grafik.scripts", []);
-  const { symbol, interval, theme } = settings;
+  const { symbol: savedSymbol, interval, theme } = settings;
   const iv = intervalById(interval) ?? intervalById("4h")!;
 
   useEffect(() => {
@@ -71,11 +71,26 @@ export default function App() {
   const [srcError, setSrcError] = useState<string | null>(null);
   const connect = useCallback(() => {
     setSrcError(null);
-    (isDemo() ? Promise.resolve(new DemoSource()) : detectBinance())
+    (isDemo() ? Promise.resolve(new DemoSource()) : GoldSource.detect())
       .then(setSrc)
       .catch((e: unknown) => setSrcError(e instanceof Error ? e.message : String(e)));
   }, []);
   useEffect(connect, [connect]);
+
+  // Uygulama yalnız altın gösterir: kayıtlı sembol (ör. eski bir coin) kaynakta yoksa ilk altın sembolüne geçilir
+  const allowed = src?.available;
+  const symbol = allowed?.length && !allowed.includes(savedSymbol) ? allowed[0]! : savedSymbol;
+  useEffect(() => {
+    if (symbol !== savedSymbol) setSettings((s) => ({ ...s, symbol }));
+  }, [symbol, savedSymbol, setSettings]);
+  useEffect(() => {
+    if (!allowed?.length) return;
+    const fav = settings.favorites.filter((f) => allowed.includes(f));
+    const next = fav.length ? fav : [...allowed];
+    if (next.length !== settings.favorites.length || next.some((f, i) => f !== settings.favorites[i])) {
+      setSettings((s) => ({ ...s, favorites: next }));
+    }
+  }, [allowed, settings.favorites, setSettings]);
 
   const [symbols, setSymbols] = useState<SymbolInfo[] | null>(null);
   useEffect(() => {
@@ -392,7 +407,7 @@ export default function App() {
     <span className="flex items-center gap-1.5" data-testid="chart-header">
       <b className="text-fg">{symbol}</b>
       <span className="text-muted">· {iv.label} ·</span>
-      <span className="text-subtle">{src?.label ?? "…"}</span>
+      <span className="text-subtle">{src?.labelFor?.(symbol) ?? src?.label ?? "…"}</span>
       <span className={`inline-block h-2 w-2 rounded-full ${live ? "bg-up" : "bg-subtle"}`} title={live ? "Canlı" : "Canlı bağlantı yok (yoklama)"} />
     </span>
   );
