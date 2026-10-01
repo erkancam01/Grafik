@@ -1,0 +1,49 @@
+//@version=5
+// ARŞİV — asıl sınavı geçemedi (2026-10-01, final.ts --study-h): hiç görülmemiş veride kazanma %74,5 / %68,3 ama
+// işlem başına −%0,04 / −%0,95 (bkz. tools/backtest/protocol.ts değişiklik kaydı). Kütüphanede yok.
+// Momentum 4s Strateji — 4 saatlik grafikte güçlü momentumdan sonra aynı yönde kısa hedefli işlem.
+// Kural (4 saatlik verinin analizinden; bkz. tools/backtest/htf_study.py, htf_momentum.py): mum gövdesi önceki mumun
+// ATR14 değerinin 2 katını aşarsa mum yönünde, aşmazsa RSI14 80'in üstündeyse long / 20'nin altındaysa short sinyali;
+// sonraki mumun açılışında girilir. Kâr al 1 × ATR14, zarar kes 2,5 × ATR14 (sinyal mumundaki ATR), en çok 42 mum
+// (7 gün). Pozisyon varken yeni giriş yapılmaz. Kazanma oranı yüksektir (~%75), ortalama kazanç ortalama zarardan küçük.
+// Varsayılan: 1000 USDT, her işlemde özsermayenin %100'ü, komisyon %0,05 (Binance vadeli piyasa emri).
+// Hepsi Ayarlar → Strateji özellikleri'nden değiştirilebilir. Grafik 4 saat olmalı.
+strategy("Momentum 4s Strateji", shorttitle = "Momentum 4s S", overlay = true, initial_capital = 1000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100, commission_type = strategy.commission.percent, commission_value = 0.05)
+
+k       = input.float(2, "Güçlü mum eşiği (gövde / ATR)", minval = 0.5, step = 0.25, group = "Giriş", tooltip = "Mum gövdesi, önceki mumun ATR14 değerinin bu katını aşarsa sinyal")
+rsiHi   = input.int(80, "RSI üst eşiği", minval = 50, maxval = 100, group = "Giriş")
+rsiLo   = input.int(20, "RSI alt eşiği", minval = 0, maxval = 50, group = "Giriş")
+yon     = input.string("Her ikisi", "İşlem yönü", options = ["Her ikisi", "Yalnız long", "Yalnız short"], group = "Giriş")
+tpK     = input.float(1, "Kâr al (ATR katı)", minval = 0.1, step = 0.25, group = "Çıkış")
+slK     = input.float(2.5, "Zarar kes (ATR katı)", minval = 0.1, step = 0.25, group = "Çıkış")
+maxBars = input.int(42, "En uzun süre (mum, 0 = sınırsız)", minval = 0, group = "Çıkış", tooltip = "4 saatlik grafikte 42 mum = 7 gün")
+
+atr14  = ta.atr(14)
+rsi14  = ta.rsi(close, 14)
+body   = close - open
+strong = math.abs(body) > k * atr14[1]
+dir    = strong ? math.sign(body) : rsi14 > rsiHi ? 1 : rsi14 < rsiLo ? -1 : 0
+
+flat    = strategy.position_size == 0
+goLong  = flat and not na(atr14[1]) and dir > 0 and yon != "Yalnız short"
+goShort = flat and not na(atr14[1]) and dir < 0 and yon != "Yalnız long"
+
+var float atrE = na
+if goLong
+    atrE := atr14
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Çıkış L", "Long", profit = tpK * atr14 / syminfo.mintick, loss = slK * atr14 / syminfo.mintick, comment_profit = "TP", comment_loss = "SL")
+if goShort
+    atrE := atr14
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Çıkış S", "Short", profit = tpK * atr14 / syminfo.mintick, loss = slK * atr14 / syminfo.mintick, comment_profit = "TP", comment_loss = "SL")
+
+pos = strategy.position_size
+if pos != 0 and maxBars > 0 and bar_index - strategy.opentrades.entry_bar_index(0) + 1 >= maxBars
+    strategy.close_all(comment = "Süre")
+
+ep = strategy.position_avg_price
+plot(pos > 0 ? ep + tpK * atrE : pos < 0 ? ep - tpK * atrE : na, "Kâr al", color = color.green, style = plot.style_linebr)
+plot(pos > 0 ? ep - slK * atrE : pos < 0 ? ep + slK * atrE : na, "Zarar kes", color = color.red, style = plot.style_linebr)
+plot(atrE, "ATR giriş", display = display.none)
+barcolor(dir > 0 ? color.lime : dir < 0 ? color.fuchsia : na)

@@ -1,0 +1,85 @@
+//@version=5
+// Rejim Strateji (günlük) — coinin günlük rejimine göre (yükseliş / düşüş / yatay) ayrı kural; kazanma oranı yüksek.
+// Kurallar, 2020-2026 verisinde ileriye doğru yürüyen seçimle bulundu (her yıl yalnız geçmişe bakarak seçilip sonraki
+// yıl uygulandı; bkz. tools/backtest/regime_study.py, protocol.ts R_STUDY). Bu ayarlar 2026-09 sonuna kadarki veriyle
+// yapılan güncel seçimdir.
+// Rejim (mum kapanışında, ta.dmi 14/14 ve EMA50): yükseliş = kapanış > EMA50 ve +DI > −DI ve ADX > 20;
+// düşüş = kapanış < EMA50 ve −DI > +DI ve ADX > 20; yatay = diğerleri.
+//   Yükseliş: UT Bot (anahtar 2, ATR 10) "Sat" verince AL (geri çekilmede alım). Kâr al 0,5 / zarar kes 2 × ATR14.
+//   Düşüş: RSI14 < 30 ise AL, > 70 ise SAT (aşırılıktan dönüş). Kâr al 1 / zarar kes 2,5 × ATR14.
+//   Yatay: UT Bot (anahtar 3) "Al" verince AL. Kâr al 1,5 / zarar kes 3 × ATR14.
+// Giriş sonraki mumun açılışında; ATR sinyal mumundaki değer; en çok 20 mum; pozisyon varken yeni giriş yok.
+// Uyarı: 2026'nın ilk yarısında (düşüş piyasası) ağır zarar etti; tek işlemde zarar kes %10-30'a varabilir.
+// Varsayılan: 1000 USDT, her işlemde özsermayenin %100'ü, komisyon %0,05. Grafik 1 gün olmalı.
+strategy("Rejim Strateji (günlük)", shorttitle = "Rejim S", overlay = true, initial_capital = 1000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100, commission_type = strategy.commission.percent, commission_value = 0.05)
+
+adxMin  = input.float(20, "ADX eşiği", minval = 0, group = "Rejim", tooltip = "ADX bu değerin üstündeyse trend var sayılır")
+emaLen  = input.int(50, "Rejim EMA", minval = 1, group = "Rejim")
+upA     = input.float(2, "Yükseliş: UT Bot anahtar değeri", step = 0.5, group = "Yükseliş: UT Bot 'Sat' → al")
+upTp    = input.float(0.5, "Yükseliş: kâr al (ATR katı)", minval = 0.1, step = 0.25, group = "Yükseliş: UT Bot 'Sat' → al")
+upSl    = input.float(2, "Yükseliş: zarar kes (ATR katı)", minval = 0.1, step = 0.25, group = "Yükseliş: UT Bot 'Sat' → al")
+dnLo    = input.float(30, "Düşüş: RSI altı → al", minval = 0, maxval = 100, group = "Düşüş: RSI aşırılığı → dönüş")
+dnHi    = input.float(70, "Düşüş: RSI üstü → sat", minval = 0, maxval = 100, group = "Düşüş: RSI aşırılığı → dönüş")
+dnTp    = input.float(1, "Düşüş: kâr al (ATR katı)", minval = 0.1, step = 0.25, group = "Düşüş: RSI aşırılığı → dönüş")
+dnSl    = input.float(2.5, "Düşüş: zarar kes (ATR katı)", minval = 0.1, step = 0.25, group = "Düşüş: RSI aşırılığı → dönüş")
+sdA     = input.float(3, "Yatay: UT Bot anahtar değeri", step = 0.5, group = "Yatay: UT Bot 'Al' → al")
+sdTp    = input.float(1.5, "Yatay: kâr al (ATR katı)", minval = 0.1, step = 0.25, group = "Yatay: UT Bot 'Al' → al")
+sdSl    = input.float(3, "Yatay: zarar kes (ATR katı)", minval = 0.1, step = 0.25, group = "Yatay: UT Bot 'Al' → al")
+upOn    = input.bool(true, "Yükselişte işlem aç", group = "Genel")
+dnOn    = input.bool(true, "Düşüşte işlem aç", group = "Genel", tooltip = "2026'nın ilk yarısındaki zarar bu rejimden geldi")
+sdOn    = input.bool(true, "Yatayda işlem aç", group = "Genel", tooltip = "İleriye yürüyen testte en zayıf rejim")
+yon     = input.string("Her ikisi", "İşlem yönü", options = ["Her ikisi", "Yalnız long", "Yalnız short"], group = "Genel")
+maxBars = input.int(20, "En uzun süre (mum, 0 = sınırsız)", minval = 0, group = "Genel", tooltip = "Günlük grafikte 20 mum = 20 gün")
+
+atr14 = ta.atr(14)
+atr10 = ta.atr(10)
+rsi14 = ta.rsi(close, 14)
+ema   = ta.ema(close, emaLen)
+[diP, diM, adx] = ta.dmi(14, 14)
+ready = not na(adx) and not na(ema) and not na(diP) and not na(diM)
+// 1 yükseliş, -1 düşüş, 2 yatay, 0 hazır değil
+rej = not ready ? 0 : close > ema and diP > diM and adx > adxMin ? 1 : close < ema and diM > diP and adx > adxMin ? -1 : 2
+
+// UT Bot (TradingView'daki UT Bot Alerts ile aynı), iki anahtar değerle
+n2 = upA * atr10
+t2 = 0.0
+p2 = nz(t2[1], 0)
+t2 := close > p2 and close[1] > p2 ? math.max(p2, close - n2) : close < p2 and close[1] < p2 ? math.min(p2, close + n2) : close > p2 ? close - n2 : close + n2
+utSell2 = close < t2 and ta.crossover(t2, close)
+n3 = sdA * atr10
+t3 = 0.0
+p3 = nz(t3[1], 0)
+t3 := close > p3 and close[1] > p3 ? math.max(p3, close - n3) : close < p3 and close[1] < p3 ? math.min(p3, close + n3) : close > p3 ? close - n3 : close + n3
+utBuy3 = close > t3 and ta.crossover(close, t3)
+
+sigL = rej == 1 ? upOn and utSell2 : rej == -1 ? dnOn and rsi14 < dnLo : rej == 2 ? sdOn and utBuy3 : false
+sigS = rej == -1 and dnOn and rsi14 > dnHi
+tpK  = rej == 1 ? upTp : rej == -1 ? dnTp : sdTp
+slK  = rej == 1 ? upSl : rej == -1 ? dnSl : sdSl
+
+flat    = strategy.position_size == 0
+goLong  = flat and not na(atr14) and sigL and yon != "Yalnız short"
+goShort = flat and not na(atr14) and sigS and yon != "Yalnız long"
+
+var float tpD = na
+var float slD = na
+if goLong or goShort
+    tpD := tpK * atr14
+    slD := slK * atr14
+if goLong
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Çıkış L", "Long", profit = tpD / syminfo.mintick, loss = slD / syminfo.mintick, comment_profit = "TP", comment_loss = "SL")
+if goShort
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Çıkış S", "Short", profit = tpD / syminfo.mintick, loss = slD / syminfo.mintick, comment_profit = "TP", comment_loss = "SL")
+
+pos = strategy.position_size
+if pos != 0 and maxBars > 0 and bar_index - strategy.opentrades.entry_bar_index(0) + 1 >= maxBars
+    strategy.close_all(comment = "Süre")
+
+ep = strategy.position_avg_price
+bgcolor(rej == 1 ? color.new(color.green, 90) : rej == -1 ? color.new(color.red, 90) : rej == 2 ? color.new(color.gray, 92) : na, title = "Rejim")
+plot(pos > 0 ? ep + tpD : pos < 0 ? ep - tpD : na, "Kâr al", color = color.green, style = plot.style_linebr)
+plot(pos > 0 ? ep - slD : pos < 0 ? ep + slD : na, "Zarar kes", color = color.red, style = plot.style_linebr)
+plot(tpD, "Kâr al mesafesi", display = display.none)
+plot(slD, "Zarar kes mesafesi", display = display.none)

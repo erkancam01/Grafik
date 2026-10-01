@@ -1,0 +1,66 @@
+//@version=5
+// UT Bot Pro Strateji (15 dk) — UT Bot trendi yönünde güçlü momentum mumuyla al-sat testi.
+// Kural (5 dk / 15 dk verisinin analizinden; bkz. tools/backtest): UT Bot'un iz süren stopu trendi belirler (fiyat
+// izin üstündeyse yalnız long, altındaysa yalnız short). Gövdesi ATR'nin "Momentum eşiği" katını aşan ve trend
+// yönündeki mum kapanınca sonraki mumun açılışında girilir. Kâr al / zarar kes 1 saatlik ATR'nin katları; bir gün
+// içinde ikisi de olmazsa işlem kapatılır. Pozisyon varken yeni giriş yapılmaz.
+// Varsayılan: 1000 USDT, her işlemde özsermayenin %100'ü, komisyon %0,05 (Binance vadeli piyasa emri).
+// Hepsi Ayarlar → Strateji özellikleri'nden değiştirilebilir. Grafik 15 dk olmalı.
+strategy("UT Bot Pro Strateji (15 dk)", shorttitle = "UT Bot Pro S", overlay = true, initial_capital = 1000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100, commission_type = strategy.commission.percent, commission_value = 0.05)
+
+a       = input.float(1, "Hassasiyet (anahtar değer)", step = 0.5, group = "UT Bot", tooltip = "UT Bot iz süren stopunun ATR katı (orijinal: 1)")
+c       = input.int(10, "ATR periyodu", minval = 1, group = "UT Bot")
+k       = input.float(3, "Momentum eşiği (mum gövdesi / ATR)", minval = 0.5, step = 0.25, group = "Giriş", tooltip = "Mum gövdesi, önceki mumun ATR14 değerinin bu katını aşarsa sinyal")
+yon     = input.string("Her ikisi", "İşlem yönü", options = ["Her ikisi", "Yalnız long", "Yalnız short"], group = "Giriş")
+atrTf   = input.timeframe("60", "Çıkış ATR zaman dilimi", group = "Çıkış")
+tpK     = input.float(1, "Kâr al (ATR katı)", minval = 0.1, step = 0.25, group = "Çıkış")
+slK     = input.float(2, "Zarar kes (ATR katı)", minval = 0.1, step = 0.25, group = "Çıkış")
+maxBars = input.int(96, "En uzun süre (mum, 0 = sınırsız)", minval = 0, group = "Çıkış", tooltip = "15 dk grafikte 96 mum = 1 gün")
+
+// UT Bot (kütüphanedeki UT Bot Alerts ile aynı iz)
+xATR  = ta.atr(c)
+nLoss = a * xATR
+src   = close
+trail = 0.0
+prevTrail = nz(trail[1], 0)
+trail := if src > prevTrail and src[1] > prevTrail
+    math.max(prevTrail, src - nLoss)
+else if src < prevTrail and src[1] < prevTrail
+    math.min(prevTrail, src + nLoss)
+else if src > prevTrail
+    src - nLoss
+else
+    src + nLoss
+
+// Mumdan önceki UT durumu (trend) ve momentum mumu
+utUp   = close[1] > trail[1]
+utDn   = close[1] < trail[1]
+atr14  = ta.atr(14)
+body   = close - open
+strong = math.abs(body) > k * atr14[1]
+atrH   = request.security(syminfo.tickerid, atrTf, ta.atr(14), lookahead = barmerge.lookahead_off)
+
+flat    = strategy.position_size == 0
+goLong  = flat and strong and body > 0 and utUp and not na(atrH) and yon != "Yalnız short"
+goShort = flat and strong and body < 0 and utDn and not na(atrH) and yon != "Yalnız long"
+
+var float atrE = na
+if goLong
+    atrE := atrH
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Çıkış L", "Long", profit = tpK * atrH / syminfo.mintick, loss = slK * atrH / syminfo.mintick, comment_profit = "TP", comment_loss = "SL")
+if goShort
+    atrE := atrH
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Çıkış S", "Short", profit = tpK * atrH / syminfo.mintick, loss = slK * atrH / syminfo.mintick, comment_profit = "TP", comment_loss = "SL")
+
+pos = strategy.position_size
+if pos != 0 and maxBars > 0 and bar_index - strategy.opentrades.entry_bar_index(0) + 1 >= maxBars
+    strategy.close_all(comment = "Süre")
+
+ep = strategy.position_avg_price
+plot(pos > 0 ? ep + tpK * atrE : pos < 0 ? ep - tpK * atrE : na, "Kâr al", color = color.new(color.green, 0), style = plot.style_linebr)
+plot(pos > 0 ? ep - slK * atrE : pos < 0 ? ep + slK * atrE : na, "Zarar kes", color = color.new(color.red, 0), style = plot.style_linebr)
+plot(trail, "UT izi", color = utUp ? color.new(color.green, 60) : color.new(color.red, 60))
+plot(atrE, "ATR giriş", display = display.none)
+barcolor(strong and ((body > 0 and utUp) or (body < 0 and utDn)) ? (body > 0 ? color.lime : color.fuchsia) : na)
