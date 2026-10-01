@@ -116,6 +116,10 @@ export const CRITERIA: { final: Criteria; holdout: Criteria; dev: { pooledWinRat
  * 2026-10-01  T_CHECK (bakış 1) — TUTMADI. Trend Avcısı × 15 coin × 2020-01 → 2024-08: 6304 işlem, kazanma %34,4,
  *             −%0,123/işlem (fonlama dahil −%0,184), PF 0,95; yıllar 2020 −0,004, 2021 −0,014, 2022 −0,109, 2023 −0,244,
  *             2024 −0,238; bileşik özsermaye medyanı ×0,31. README ve kütüphane açıklaması buna göre düzeltildi.
+ * 2026-10-01  Kullanıcı: "%70 her yerde çıkıyorsa, şu an hangi trendde olduğunu bulup ona göre strateji yapalım."
+ *             Rejim çalışması (R_STUDY, aşağıda) sonuçlara bakılmadan önce yazıldı. Veri daha önce görüldüğü için
+ *             koruma ayrı sınav dönemi değil, ileriye doğru yürüyen seçimdir: her yıl yalnız önceki yıllarda kapanmış
+ *             işlemlerle seçim yapılır; yöntem, ölçütler ve kural evreni çalıştırmadan önce sabit.
  */
 
 /**
@@ -166,6 +170,22 @@ export const L_STUDY = {
 export const T_CHECK = {
   window: { key: "tcheck", name: "Trend Avcısı ek denetimi", from: dayStart("2020-01-01"), to: dayEnd("2024-08-31") } as Window,
   criteria: { pooledAvgRet: 0, pooledPf: 1 } as Criteria,
+};
+
+/**
+ * Rejim çalışması (2026-10-01) — ayrıntı regime_study.py başında. Rejim günlük mumdan: yükseliş (kapanış > EMA50,
+ * +DI > −DI, ADX > 20), düşüş (tersi), yatay (diğerleri). Kural evreni 2268 (1 s / 4 s / 1 g × 18 olay × devam/ters ×
+ * 7 geometri × yön). Her test yılı (2021 … 2026) başında, yalnız önceki yıllarda kapanmış işlemlerle, her rejim için
+ * ≥ 60 işlem, kazanma ≥ %72, ort. > 0 olan kurallardan ortalamanın %95 alt sınırı en yüksek olan (> 0) seçilir; o yıl
+ * coin o rejimdeyken yalnız o kural işlem açar (coin başına tek pozisyon). Ana model: coinin kendi rejimi; ikincil:
+ * BTC'nin rejimi, rejimsiz. Kabul (ana model, örneklem dışı 2021-01 → 2026-09): kazanma ≥ %70, ort. > 0, PF > 1,
+ * 6 yılın ≥ 4'ünde ort. > 0, ≥ 10/15 coinde PF > 1. Denetim: aynı yöntem yalnız rastgele girişli 1260 kuralla.
+ * Tek çalıştırma; geçerse güncel seçim (tüm veriyle) Pine'a çevrilir ve motorla doğrulanır.
+ */
+export const R_STUDY = {
+  testYears: [2021, 2022, 2023, 2024, 2025, 2026],
+  select: { minTrades: 60, winRate: 72, score: "ortalamanın %95 alt sınırı > 0" },
+  criteria: { pooledWinRate: 70, pooledAvgRet: 0, pooledPf: 1, pfCoins: 10, yearsPositive: 4 },
 };
 
 export const LOOKS = { val: 2, final: 1, reserveRetry: 1 };

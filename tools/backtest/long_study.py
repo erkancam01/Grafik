@@ -71,10 +71,11 @@ def mapped(vals: np.ndarray, idx: np.ndarray) -> np.ndarray:
     return np.where(idx >= 0, vals[np.maximum(idx, 0)], np.nan)
 
 
-def prep(base: dict, tf: str) -> dict:
+def prep(base: dict, tf: str, to: int | None = None) -> dict:
+    """Grafik mumları ve göstergeler; `to` (varsayılan geliştirme sonu) sonrasında yarım kalan son mum atılır."""
     sec = TFS[tf]
     d = dict(base) if sec == 900 else A.htf(base, sec, 900)[0]
-    full = d["t"] + sec * 1000 - 1 <= TO  # geliştirme sonunda yarım kalan son mum atılır
+    full = d["t"] + sec * 1000 - 1 <= (TO if to is None else to)
     d = {k: v[full] for k, v in d.items()}
     c, h, l = d["c"], d["h"], d["l"]
     bpd = 86400 // sec
