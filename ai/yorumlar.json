@@ -1,14 +1,15 @@
 {
- "surum": 1,
+ "surum": 2,
  "sembol": "PAXGUSDT",
  "baslangic": 1791158400000,
- "guncelleme": 1790841882690,
- "haftalar": [
+ "guncelleme": 1790846317370,
+ "olaylar": [
   {
-   "hafta": 1790553600000,
-   "zaman": 1790841882690,
-   "zamaninda": false,
+   "tf": "1w",
+   "zaman": 1790553600000,
    "sinyal": "yok",
+   "karar": 1790841882690,
+   "zamaninda": false,
    "pozisyon": false,
    "acilis": 4258.53,
    "oncekiKapanis": 4258.53,
@@ -18,5 +19,8 @@
    "kapanis": null
   }
  ],
- "islemler": []
+ "islemler": {
+  "1d": [],
+  "1w": []
+ }
 }
