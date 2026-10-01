@@ -1,0 +1,22 @@
+{
+ "surum": 1,
+ "sembol": "PAXGUSDT",
+ "baslangic": 1791158400000,
+ "guncelleme": 1790841882690,
+ "haftalar": [
+  {
+   "hafta": 1790553600000,
+   "zaman": 1790841882690,
+   "zamaninda": false,
+   "sinyal": "yok",
+   "pozisyon": false,
+   "acilis": 4258.53,
+   "oncekiKapanis": 4258.53,
+   "iz": 4471.93274384905,
+   "ai": null,
+   "aiHata": "ANTHROPIC_API_KEY tanımlı değil (GitHub → Settings → Secrets and variables → Actions)",
+   "kapanis": null
+  }
+ ],
+ "islemler": []
+}
