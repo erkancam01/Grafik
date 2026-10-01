@@ -1,0 +1,8 @@
+{
+  "script": "tools/backtest/pine/gunluk_momentum_strategy.pine",
+  "tf": 86400,
+  "data": "15m",
+  "warmupDays": 120,
+  "inputs": {},
+  "note": "Günlük Momentum, varsayılan ayarlar (gövde > 1,5 × ATR14 → aynı yönde, kâr al 1 / zarar kes 3 × ATR14, en çok 20 gün). long_study.py'nin önceden yazılmış seçim kuralıyla seçildi; motorla 2020-2022 × 15 coin: 570 işlem, %76,5 kazanma, +%1,61/işlem, PF 1,32. Sınavlardan önce donduruldu (2026-10-01)."
+}

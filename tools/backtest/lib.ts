@@ -12,12 +12,15 @@ const DAY = 86_400_000;
 const IST = 3 * 3_600_000;
 
 /** `import_market_data.py` çıktısı: art arda Float64 sütunlar (zaman, açılış, yüksek, düşük, kapanış, hacim). */
-export function loadBars(symbol: string, tf: "1m" | "5m" = "5m"): BarsData {
+export type BaseTf = "1m" | "5m" | "15m";
+const BASE_SEC: Record<BaseTf, number> = { "1m": 60, "5m": 300, "15m": 900 };
+
+export function loadBars(symbol: string, tf: BaseTf = "5m"): BarsData {
   const buf = readFileSync(`${BARS_DIR}/${symbol}_${tf}.f64`);
   const all = new Float64Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
   const n = all.length / 6;
   const col = (k: number) => all.subarray(k * n, (k + 1) * n);
-  return { time: col(0), open: col(1), high: col(2), low: col(3), close: col(4), volume: col(5), tfSec: tf === "1m" ? 60 : 300, symbol, lastRealtime: false };
+  return { time: col(0), open: col(1), high: col(2), low: col(3), close: col(4), volume: col(5), tfSec: BASE_SEC[tf], symbol, lastRealtime: false };
 }
 
 /** `a`'da `x`'ten küçük olmayan ilk indeks. */
@@ -71,6 +74,11 @@ export interface Job {
   /** Grafik zaman dilimi, saniye (varsayılan 300 = 5 dk; 900 = 15 dk, 5 dk mumlardan üretilir). */
   tf?: number;
   /**
+   * Taban veri: "5m" (market-data, 2024-09 → ; varsayılan) ya da "15m" (research-data, 2020-01 → ). Grafik ve
+   * request.security mumları tabandan üretilir; grafik tabandan küçük olamaz.
+   */
+  data?: "5m" | "15m";
+  /**
    * Uygulamadaki gibi yükleme (src/App.tsx, src/indicators/compute.ts): grafik = son max(5000, test başı + 300)
    * mum; üst zaman dilimi = grafiğin kapsadığı süre + 400 mum. `now` = uygulamanın saati (ms).
    */
@@ -95,12 +103,13 @@ export class Runner {
   private scripts = new Map<string, Compiled>();
   private extras = new Map<string, BarsData>();
 
-  private barsTf(symbol: string, tf: number): BarsData {
-    const key = `${symbol}|${tf}`;
+  private barsTf(symbol: string, tf: number, base: "5m" | "15m" = "5m"): BarsData {
+    const key = `${symbol}|${base}|${tf}`;
     let b = this.bars.get(key);
     if (!b) {
-      const m5 = loadBars(symbol, "5m");
-      this.bars.set(key, (b = tf === 300 ? m5 : resample(m5, tf)));
+      if (tf < BASE_SEC[base]) throw new Error(`${symbol}: ${tf} sn grafik ${base} tabandan üretilemez`);
+      const raw = loadBars(symbol, base);
+      this.bars.set(key, (b = tf === BASE_SEC[base] ? raw : resample(raw, tf)));
     }
     return b;
   }
@@ -111,13 +120,14 @@ export class Runner {
     return c;
   }
 
-  /** request.security verisi: aynı aralıktaki 5 dk mumlardan üst zaman dilimi / Heikin Ashi. */
-  private extraFor(from: number, to: number, q: DataRequest): BarsData {
-    const key = `${from}|${to}|${dataKey(q)}`;
+  /** request.security verisi: aynı aralıktaki taban mumlardan üst zaman dilimi / Heikin Ashi. */
+  private extraFor(from: number, to: number, q: DataRequest, baseTf: "5m" | "15m" = "5m"): BarsData {
+    const key = `${from}|${to}|${baseTf}|${dataKey(q)}`;
     let x = this.extras.get(key);
     if (!x) {
-      const base = sliceTime(this.barsTf(q.symbol, 300), from, to);
-      const tf = q.tfSec === 300 ? base : resample(base, q.tfSec);
+      const bs = BASE_SEC[baseTf];
+      const base = sliceTime(this.barsTf(q.symbol, bs, baseTf), from, to);
+      const tf = q.tfSec === bs ? base : resample(base, q.tfSec);
       this.extras.set(key, (x = q.heikinAshi ? heikinAshi(tf) : tf));
     }
     return x;
@@ -139,10 +149,12 @@ export class Runner {
     const t0 = performance.now();
     const c = this.script(job.script);
     const tfSec = job.tf ?? 300;
+    const baseTf = job.data ?? "5m";
     let from = job.from - (job.warmupDays ?? WARMUP_DAYS) * DAY;
     let to = job.to + DAY; // aralıktan sonra en az bir mum: açık pozisyon "Dönem sonu" ile kapanır
-    let b = sliceTime(this.barsTf(job.symbol, tfSec), from, to);
+    let b = sliceTime(this.barsTf(job.symbol, tfSec, baseTf), from, to);
     if (job.appLike) {
+      if (baseTf !== "5m") throw new Error("appLike yalnız 5m tabanla");
       const all = this.barsTf(job.symbol, tfSec);
       const want = Math.min(50_000, Math.max(5000, Math.ceil((job.appLike.now - job.from) / (tfSec * 1000)) + 300));
       const n = all.time.length;
@@ -162,14 +174,12 @@ export class Runner {
       const r = run(c, b, { inputs, extra, timeLimitMs: 3_600_000, maxOps: Number.MAX_SAFE_INTEGER });
       if (r.ok) return { ...collect(r.output, b, inputs), bars: b.time.length, ms: performance.now() - t0 };
       if ("error" in r) throw new Error(`${job.symbol}: satır ${r.error.line}: ${r.error.message}`);
-      if (q0(r.needData)) throw new Error(`${job.symbol}: veri isteği çözülemedi`);
-      for (const q of r.needData) extra[dataKey(q)] = job.appLike ? this.extraAppLike(b, q) : this.extraFor(from, to, q);
+      if (r.needData.some((q) => q.tfSec < BASE_SEC[baseTf])) throw new Error(`${job.symbol}: veri isteği çözülemedi`);
+      for (const q of r.needData) extra[dataKey(q)] = job.appLike ? this.extraAppLike(b, q) : this.extraFor(from, to, q, baseTf);
     }
     throw new Error(`${job.symbol}: request.security 5 turda çözülemedi`);
   }
 }
-
-const q0 = (reqs: DataRequest[]) => reqs.some((q) => q.tfSec < 300);
 
 function collect(out: PineOutput, b: BarsData, inputs: Record<string, unknown>): Omit<JobResult, "bars" | "ms"> {
   const s = out.strategy;

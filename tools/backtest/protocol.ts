@@ -101,6 +101,12 @@ export const CRITERIA: { final: Criteria; holdout: Criteria; dev: { pooledWinRat
  * 2026-10-01  Uzun geçmiş çalışması (L_STUDY, aşağıda) bot deposunun research-data dalıyla (2020 → ) sonuçlara
  *             bakılmadan önce yazıldı. Yalnız veri bütünlüğü denetlendi: market-data ile örtüşen dönemde coin başına
  *             72 864 mumun 1-6'sı ayrışıyor (arşiv farkı), funding birebir aynı.
+ * 2026-10-01  long_study.py (1988 kural): 37 aday (★). Uyarı: 4 saatte rastgele giriş de (kâr al 1 / zarar kes 3)
+ *             aday şartını geçti (%75,2, +29 bps) — 4 saatte bu dönemde geometri tek başına artı. Seçim kuralıyla
+ *             (en kötü yılın ortalaması) seçilen: 1 gün, gövde > 1,5 × ATR14, devam, kâr al 1 / zarar kes 3, 20 gün
+ *             (laboratuvar: 446 işlem, %74,4, +132 bps; aynı geometride rastgele −79 bps). Motor (g1_ldev):
+ *             570 işlem, %76,5, +%1,608/işlem, PF 1,32; yıllar %75,7/+0,28, %77,5/+1,95, %75,8/+2,54; 11/15 coinde
+ *             PF > 1. Donduruldu: frozen_1d.json. Sınavlar: final.ts --study-l, bir bakış.
  */
 
 /**

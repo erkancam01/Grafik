@@ -10,7 +10,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { BARS_DIR, bootstrapAvgRet, loadBars, lowerBound, ROOT, stats, wilson, type Stats, type Trade } from "./lib";
 import { Pool } from "./pool";
-import { COMMISSION, CRITERIA, DEV_COINS, H_STUDY, HOLDOUT_COINS, RESERVE_COINS, STRESS_COMMISSION, WINDOWS, type Criteria, type Window } from "./protocol";
+import { COMMISSION, CRITERIA, DEV_COINS, H_STUDY, HOLDOUT_COINS, L_STUDY, RESERVE_COINS, STRESS_COMMISSION, WINDOWS, type Criteria, type Window } from "./protocol";
 
 interface Frozen {
   script: string;
@@ -19,6 +19,8 @@ interface Frozen {
   tf?: number;
   /** Test başından önce yüklenen gün (günlük trend göstergeleri için). */
   warmupDays?: number;
+  /** Taban veri (lib.ts Job.data; uzun geçmiş çalışması "15m"). */
+  data?: "5m" | "15m";
   note?: string;
 }
 
@@ -78,6 +80,7 @@ const M1 = new Map<string, ReturnType<typeof loadBars>>();
 function resolveAmb(symbol: string, t: Trade, tf: number): "doğru" | "yanlış" | "çözülemez" {
   let b = M1.get(symbol);
   if (!b) M1.set(symbol, (b = loadBars(symbol, "1m")));
+  if (t.exitTime < b.time[0]!) return "çözülemez"; // 1 dk veri 2024-09'dan başlar
   const i0 = lowerBound(b.time, t.exitTime);
   for (let i = i0; i < i0 + tf / 60 && i < b.time.length; i++) {
     const hi = b.high[i]!;
@@ -94,10 +97,11 @@ function resolveAmb(symbol: string, t: Trade, tf: number): "doğru" | "yanlış"
 // ------------------------------------------------------------------ koşu
 
 let WARMUP: number | undefined;
+let DATA: "5m" | "15m" | undefined;
 
 async function runSet(pool: Pool, script: string, inputs: Record<string, unknown>, coins: string[], w: Window, comm: number, tf: number) {
   const res = await Promise.all(
-    coins.map((symbol) => pool.run({ script: `${ROOT}${script}`, symbol, from: w.from, to: w.to, inputs, comm, tf, warmupDays: WARMUP })),
+    coins.map((symbol) => pool.run({ script: `${ROOT}${script}`, symbol, from: w.from, to: w.to, inputs, comm, tf, warmupDays: WARMUP, data: DATA })),
   );
   return Object.fromEntries(coins.map((c, k) => [c, res[k]!.trades])) as Record<string, Trade[]>;
 }
@@ -190,9 +194,73 @@ async function studyH(frozen: Frozen, frozenPath: string, outDir: string): Promi
   console.log(`\nrapor: ${file}`);
 }
 
+/** Bileşik özsermaye (her işlemde %100): coin başına son çarpan ve en büyük düşüş (%), çıkış sırasıyla. */
+function equityLine(per: Record<string, Trade[]>): string {
+  const rows = Object.entries(per).map(([sym, ts]) => {
+    let eq = 1;
+    let peak = 1;
+    let dd = 0;
+    for (const t of [...ts].sort((a, b) => a.exitTime - b.exitTime)) {
+      eq *= 1 + t.ret / 100;
+      peak = Math.max(peak, eq);
+      dd = Math.max(dd, 1 - eq / peak);
+    }
+    return { sym, eq, dd };
+  });
+  const med = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
+  const worst = rows.reduce((a, b) => (b.dd > a.dd ? b : a));
+  return (
+    `Bileşik özsermaye (her işlemde %100, coin başına): son değer medyanı ×${f(med(rows.map((r) => r.eq)))}, ` +
+    `en büyük düşüş medyanı %${f(med(rows.map((r) => r.dd * 100)), 1)}, en kötü %${f(worst.dd * 100, 1)} (${worst.sym}).`
+  );
+}
+
+/** Uzun geçmiş çalışması (protocol.ts L_STUDY): iki sınav, tek bakış. */
+async function studyL(frozen: Frozen, frozenPath: string, outDir: string): Promise<void> {
+  const tf = frozen.tf ?? 86400;
+  WARMUP = frozen.warmupDays;
+  DATA = frozen.data ?? "15m";
+  appendFileSync(`${outDir}/looks.log`, `${new Date().toISOString()} final.ts L_STUDY ${frozenPath}\n`);
+  const pool = new Pool();
+  const md: string[] = [
+    `# Uzun geçmiş çalışması — sınavlar, grafik ${tf >= 86400 ? `${tf / 86400} gün` : `${tf / 3600} saat`}`,
+    "",
+    `Betik: \`${frozen.script}\``,
+    "",
+    "Ayar: `" + JSON.stringify(frozen.inputs) + "`" + (frozen.note ? ` — ${frozen.note}` : ""),
+    "",
+  ];
+  const day = (w: Window) => `${new Date(w.from + 3 * 3_600_000).toISOString().slice(0, 10)} → ${new Date(w.to + 3 * 3_600_000).toISOString().slice(0, 10)}`;
+  const tests: [string, Window][] = [
+    [`Sınav 1 (hiç görülmemiş): 15 coin × ${day(L_STUDY.exam1)}`, L_STUDY.exam1],
+    [`Sınav 2: 15 coin × ${day(L_STUDY.exam2)}`, L_STUDY.exam2],
+  ];
+  for (const [title, w] of tests) {
+    const res = await runSet(pool, frozen.script, frozen.inputs, L_STUDY.coins, w, COMMISSION, tf);
+    const T = table(`${title}, komisyon %${COMMISSION}/taraf`, res, true);
+    md.push(T.md, "", equityLine(res), "", "**Kabul:**", ...verdict(T.pooled, T.coins, false, L_STUDY.criteria), "");
+    const amb = { doğru: 0, yanlış: 0, çözülemez: 0 };
+    for (const [sym, ts] of Object.entries(res)) for (const t of ts) if (t.amb) amb[resolveAmb(sym, t, tf)]++;
+    md.push(`Belirsiz çıkışlar (1 dk ile; 1 dk veri 2024-09'dan): motor doğru ${amb.doğru}, yanlış ${amb.yanlış}, çözülemez ${amb.çözülemez}.`, "");
+    const st = await runSet(pool, frozen.script, frozen.inputs, L_STUDY.coins, w, STRESS_COMMISSION, tf);
+    md.push(table(`Stres (%${STRESS_COMMISSION}/taraf): ${title}`, st).md, "");
+  }
+  await pool.close();
+  const text = md.join("\n");
+  const file = `${outDir}/final-lstudy-${Date.now()}.md`;
+  writeFileSync(file, text + "\n");
+  console.log(text);
+  console.log(`\nrapor: ${file}`);
+}
+
 async function main(): Promise<void> {
   const frozenPath = arg("frozen") ?? "tools/backtest/frozen.json";
   const frozen = JSON.parse(readFileSync(`${ROOT}${frozenPath}`, "utf8")) as Frozen;
+  if (process.argv.includes("--study-l")) {
+    const outDirL = `${ROOT}.cache/results`;
+    mkdirSync(outDirL, { recursive: true });
+    return studyL(frozen, frozenPath, outDirL);
+  }
   if (process.argv.includes("--study-h")) {
     const outDirH = `${ROOT}.cache/results`;
     mkdirSync(outDirH, { recursive: true });
