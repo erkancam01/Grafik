@@ -141,6 +141,15 @@ export const CRITERIA: { final: Criteria; holdout: Criteria; dev: { pooledWinRat
  * 2026-10-01  Kullanıcı: "geçmişteki haberleri dün duyuyormuş gibi düşünerek ve grafiğe bakarak işlem al; mantıksızsa
  *             alma; 1 saat / 4 saat / günlük / haftalık geriye dönük test". A_STUDY (aşağıda) ve konjonktür takvimi
  *             (konjonktur.ts) hiçbir süzgeç sonucuna bakılmadan önce yazıldı ve gönderildi.
+ * 2026-10-01  A_STUDY (tek çalıştırma; gold_ai_filter.ts). Net, yapay zekâ (haber + grafik) ← UT Bot olduğu gibi:
+ *             1 saat Al/Sat −%96,3 (2534 işlem, %25,5) ← −%100; yalnız long −%76,9 (1325, %26,9) ← −%97,5.
+ *             4 saat Al/Sat +%2,7 (541, %40,5) ← −%71,8; yalnız long +%42,1 (281, %44,5) ← −%20,0.
+ *             1 gün Al/Sat +%113,1 (91, %48,4) ← +%26,2; yalnız long +%136,8 (44, %54,5) ← +%69,2.
+ *             1 hafta Al/Sat +%37,1 (22, %45,5) ← +%15,8; yalnız long +%82,5 (12, %75,0) ← +%68,5.
+ *             Rastgele süzgeç denetimi: 1 saat / 4 saat / 1 gün çekilişlerin %99-100'ünden, haftalık %85 ve %94'ünden iyi.
+ *             Yalnız grafik (kurala dayalı, geçmişi bilmeyi gerektirmez): 4 saat long +%28,3, 1 gün long +%77,3,
+ *             1 gün Al/Sat +%72,3, 1 hafta Al/Sat +%47,7, 1 hafta long +%70,2. Haberin ek katkısı geriye dönük
+ *             yazılmış takvimden şişmiş olabilir; temiz ölçü ileriye dönük denemedir.
  */
 
 /**

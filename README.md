@@ -208,6 +208,37 @@ Puanlama (5 Ekim 2026'dan itibaren; öncesi "deneme öncesi" olarak gösterilir)
 ~$0,2–0,5 (Opus 5.5: milyon token başına $4 girdi / $20 çıktı, arama başına $0,01). Elle çalıştırma: **Actions →
 Yapay zekâ yorumu → Run workflow** (o haftanın yorumu yoksa sorulur; geç verildiği için sayılmaz).
 
+## Yapay zekâ konjonktür süzgeci (geriye dönük)
+
+Soru: "Geçmiş haberleri dün duymuş gibi düşünüp grafiğe bakarak her UT Bot sinyalinde 'mantıklı mı?' diye karar
+verilseydi?" Yöntem (`tools/backtest/konjonktur.ts`, `A_STUDY`; sonuçlardan önce yazılıp gönderildi):
+
+- **Haber takvimi:** 2021-01 → 2026-09 arasında 85 tarihli haber (Fed kararları, enflasyon ve istihdam verileri,
+  savaşlar, krizler, merkez bankası alımları). Her biri altın için olumlu / karışık / olumsuz okunur ve haber gününün
+  ertesi gününden geçerlidir. Altının kendi fiyatı gerekçe olarak kullanılmadı.
+- **Karar:** konjonktür olumluysa yalnız long, olumsuzsa yalnız short (yalnız long biçiminde girilmez). Karışıksa
+  grafiğe bakılır: üst zaman diliminin trendi yönündeki sinyal alınır (1 saat → 4 saatlik EMA50, 4 saat → günlük
+  EMA50, günlük → haftalık EMA20, haftalık → 40 haftalık ortalama). Çıkış hep UT Bot'un ters sinyali.
+
+PAXG/USDT, 2021-01 → 2026-09, UT Bot varsayılan, komisyon %0,05/taraf (`tools/backtest/gold_ai_filter.ts`):
+
+| Grafik | Biçim | UT Bot: işlem / kârlı / net | Yalnız grafik: net | **Yapay zekâ (haber + grafik)**: işlem / kârlı / net |
+|---|---|---|---|---|
+| 1 saat | Al→long, Sat→short | 5216 / %24,1 / −%100 | −%96,2 | 2534 / %25,5 / −%96,3 |
+| 1 saat | yalnız long | 2608 / %25,2 / −%97,5 | −%79,8 | 1325 / %26,9 / −%76,9 |
+| 4 saat | Al→long, Sat→short | 1146 / %34,4 / −%71,8 | −%17,7 | 541 / %40,5 / +%2,7 |
+| 4 saat | yalnız long | 573 / %36,5 / −%20,0 | +%28,3 | 281 / %44,5 / **+%42,1** |
+| 1 gün | Al→long, Sat→short | 187 / %41,2 / +%26,2 | +%72,3 | 91 / %48,4 / **+%113,1** |
+| 1 gün | yalnız long | 93 / %41,9 / +%69,2 | +%77,3 | 44 / %54,5 / **+%136,8** |
+| 1 hafta | Al→long, Sat→short | 32 / %40,6 / +%15,8 | +%47,7 | 22 / %45,5 / +%37,1 |
+| 1 hafta | yalnız long | 16 / %62,5 / +%68,5 | +%70,2 | 12 / **%75,0** / +%82,5 |
+
+- Süzgeç her zaman diliminde iyileştirdi ve aynı sayıda işlemi rastgele atlayan süzgeçlerin %85-100'ünden iyi
+  çıktı. 1 saatlikte UT Bot'u kurtarmıyor (komisyon ve gürültü).
+- **Dürüst uyarı:** takvim, sonradan ne olduğunu bilen biri tarafından yazıldı. "Yalnız grafik" sütunu geçmişi
+  bilmeyi gerektirmeyen kurala dayalı kısımdır. Haberin bunun üstüne eklediği kazanç gerçek olabilir, ama şişmiş de
+  olabilir. Temiz ölçü ileriye dönük denemedir (yukarıdaki yapay zekâ yorumcusu).
+
 ## Pine Script desteği
 
 v4, v5 ve v6 betiklerinin göstergelerde kullanılan kısmı:
@@ -280,6 +311,7 @@ npm run bt:final -- --study-g --coins SPOT-PAXGUSDT,XAUUSDT,PAXGUSDT   # Rejim S
 python3 tools/backtest/regime_study.py --coins SPOT-PAXGUSDT --tag altin --min-trades 40
 node --import jiti/register tools/backtest/gold_utbot.ts  # altında UT Bot: 1 hafta / 1 gün / 4 saat / 1 saat
 node --import jiti/register tools/ai/haftalik.ts --kayit /tmp/yorumlar.json --deneme  # yapay zekâ yorumcusu, Claude'suz deneme
+node --import jiti/register tools/backtest/gold_ai_filter.ts  # yapay zekâ konjonktür süzgeci, geriye dönük (A_STUDY)
 BT_REAL=1 npx playwright test e2e/real.spec.ts      # uygulamada gerçek altın verisiyle aynı sonuç + ekran görüntüsü
 npm run bt:sweep -- tools/backtest/specs/r1_rejim.ts  # Rejim Strateji, motorla 2021-2026 (laboratuvarla eşleşme)
 ```
