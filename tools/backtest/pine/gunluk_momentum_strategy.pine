@@ -1,4 +1,6 @@
 //@version=5
+// ARŞİV — sınavı geçemedi (2026-10-01, final.ts --study-l): hiç görülmemiş 2023-01 → 2024-08'de kazanma %71,8 ama
+// işlem başına −%0,07, PF 0,98; 2024-09 → 2026-09'da %77,8 / +%0,97 (bkz. protocol.ts değişiklik kaydı). Kütüphanede yok.
 // Günlük Momentum Strateji — 1 günlük grafikte güçlü mumdan sonra aynı yönde kısa hedefli işlem.
 // Kural (2020-2022 verisinin taramasından; bkz. tools/backtest/long_study.py, protocol.ts L_STUDY): mum gövdesi
 // önceki mumun ATR14 değerinin 1,5 katını aşarsa mum yönünde, sonraki mumun açılışında girilir. Kâr al 1 × ATR14,

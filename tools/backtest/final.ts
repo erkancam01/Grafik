@@ -10,7 +10,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { BARS_DIR, bootstrapAvgRet, loadBars, lowerBound, ROOT, stats, wilson, type Stats, type Trade } from "./lib";
 import { Pool } from "./pool";
-import { COMMISSION, CRITERIA, DEV_COINS, H_STUDY, HOLDOUT_COINS, L_STUDY, RESERVE_COINS, STRESS_COMMISSION, WINDOWS, type Criteria, type Window } from "./protocol";
+import { COMMISSION, CRITERIA, DEV_COINS, H_STUDY, HOLDOUT_COINS, L_STUDY, RESERVE_COINS, STRESS_COMMISSION, T_CHECK, WINDOWS, type Criteria, type Window } from "./protocol";
 
 interface Frozen {
   script: string;
@@ -253,9 +253,44 @@ async function studyL(frozen: Frozen, frozenPath: string, outDir: string): Promi
   console.log(`\nrapor: ${file}`);
 }
 
+/** Trend Avcısı ek denetimi (protocol.ts T_CHECK): hiç görmediği 2020-01 → 2024-08, 15 coin, tek bakış. */
+async function studyT(frozen: Frozen, frozenPath: string, outDir: string): Promise<void> {
+  const tf = frozen.tf ?? 900;
+  WARMUP = frozen.warmupDays;
+  DATA = "15m";
+  appendFileSync(`${outDir}/looks.log`, `${new Date().toISOString()} final.ts T_CHECK ${frozenPath}\n`);
+  const pool = new Pool();
+  const w = T_CHECK.window;
+  const res = await runSet(pool, frozen.script, frozen.inputs, L_STUDY.coins, w, COMMISSION, tf);
+  const T = table(`Trend Avcısı × 15 coin × 2020-01-01 → 2024-08-31 (hiç görülmemiş), komisyon %${COMMISSION}/taraf`, res, true);
+  const md: string[] = [`# Trend Avcısı ek denetimi`, "", `Betik: \`${frozen.script}\`, ayar: \`${JSON.stringify(frozen.inputs)}\``, "", T.md, ""];
+  md.push(equityLine(res), "", "**Kabul:**", ...verdict(T.pooled, T.coins, false, T_CHECK.criteria), "");
+  const years: Record<string, Trade[]> = {};
+  for (const ts of Object.values(res)) for (const t of ts) (years[new Date(t.entryTime + 3 * 3_600_000).getUTCFullYear()] ||= []).push(t);
+  md.push("| Yıl | İşlem | Kazanma % | Ort. işlem % | PF |", "|---|---|---|---|---|");
+  for (const [y, ts] of Object.entries(years).sort()) {
+    const st = stats(ts);
+    md.push(`| ${y} | ${st.n} | ${f(st.winRate, 1)} | ${f(st.avgRet, 3)} | ${f(st.pf)} |`);
+  }
+  md.push("");
+  const st = await runSet(pool, frozen.script, frozen.inputs, L_STUDY.coins, w, STRESS_COMMISSION, tf);
+  md.push(table(`Stres (%${STRESS_COMMISSION}/taraf)`, st).md, "");
+  await pool.close();
+  const text = md.join("\n");
+  const file = `${outDir}/final-tcheck-${Date.now()}.md`;
+  writeFileSync(file, text + "\n");
+  console.log(text);
+  console.log(`\nrapor: ${file}`);
+}
+
 async function main(): Promise<void> {
   const frozenPath = arg("frozen") ?? "tools/backtest/frozen.json";
   const frozen = JSON.parse(readFileSync(`${ROOT}${frozenPath}`, "utf8")) as Frozen;
+  if (process.argv.includes("--study-t")) {
+    const outDirT = `${ROOT}.cache/results`;
+    mkdirSync(outDirT, { recursive: true });
+    return studyT(frozen, frozenPath, outDirT);
+  }
   if (process.argv.includes("--study-l")) {
     const outDirL = `${ROOT}.cache/results`;
     mkdirSync(outDirL, { recursive: true });

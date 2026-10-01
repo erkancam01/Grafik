@@ -107,6 +107,12 @@ export const CRITERIA: { final: Criteria; holdout: Criteria; dev: { pooledWinRat
  *             (laboratuvar: 446 işlem, %74,4, +132 bps; aynı geometride rastgele −79 bps). Motor (g1_ldev):
  *             570 işlem, %76,5, +%1,608/işlem, PF 1,32; yıllar %75,7/+0,28, %77,5/+1,95, %75,8/+2,54; 11/15 coinde
  *             PF > 1. Donduruldu: frozen_1d.json. Sınavlar: final.ts --study-l, bir bakış.
+ * 2026-10-01  Sınavlar (bakış 1) — TUTMADI. Sınav 1 (2023-01 → 2024-08, hiç görülmemiş): 308 işlem, kazanma %71,8,
+ *             −%0,067/işlem, PF 0,98, PF > 1 olan coin 7/15. Sınav 2 (2024-09 → 2026-09): 401 işlem, %77,8,
+ *             +%0,969, PF 1,30, 10/15 (geçti). Her işlemde %100 ile coin başına bileşik özsermaye iki sınavda da
+ *             medyan ×0,94 / ×0,95, en büyük düşüş medyanı %35 / %42. Sonuç: 15 dk, 1 s, 4 s, 1 g'de yüksek kazanma
+ *             oranı görülmemiş veride sürüyor (geometri), kâr dönemden döneme değişiyor; ≥ %70 + kâr sağlam değil.
+ *             Ek denetim (T_CHECK, aşağıda): teslim edilen Trend Avcısı, hiç görmediği 2020-01 → 2024-08'de.
  */
 
 /**
@@ -147,6 +153,16 @@ export const L_STUDY = {
   ],
   candidate: { years: [2020, 2021, 2022], yearMinTrades: 50, yearWinRate: 72, posCoins: 10, minTrades: 300 },
   criteria: { pooledWinRate: 70, pooledAvgRet: 0, pooledPf: 1, pfCoins: 10 } as Criteria,
+};
+
+/**
+ * Trend Avcısı ek denetimi (2026-10-01): kütüphanedeki strateji (frozen.json, varsayılan ayarlar) 15 coin ×
+ * 2020-01 → 2024-08'de (research-data, 15 dk taban; strateji bu dönemi hiç görmedi). Bir bakış. Kabul, kendi son
+ * sınavındaki gibi: toplam ort. işlem > 0 ve PF > 1. Kazanma oranı, yıllar ve bileşik özsermaye düşüşü raporlanır.
+ */
+export const T_CHECK = {
+  window: { key: "tcheck", name: "Trend Avcısı ek denetimi", from: dayStart("2020-01-01"), to: dayEnd("2024-08-31") } as Window,
+  criteria: { pooledAvgRet: 0, pooledPf: 1 } as Criteria,
 };
 
 export const LOOKS = { val: 2, final: 1, reserveRetry: 1 };
