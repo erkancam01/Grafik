@@ -98,6 +98,9 @@ export const CRITERIA: { final: Criteria; holdout: Criteria; dev: { pooledWinRat
  *             dönemi × 6 coin %85,0 / +%0,650 (107 işlem); XRP/BNB/DOGE × tüm dönem %74,1 / +%0,070 (317 işlem).
  *             Sonuç: yüksek kazanma oranı görülmemiş veride de sürüyor (TP/SL geometrisi), kâr sürmüyor. Strateji
  *             tools/backtest/pine/'a arşivlendi; kütüphaneye eklenmedi.
+ * 2026-10-01  Uzun geçmiş çalışması (L_STUDY, aşağıda) bot deposunun research-data dalıyla (2020 → ) sonuçlara
+ *             bakılmadan önce yazıldı. Yalnız veri bütünlüğü denetlendi: market-data ile örtüşen dönemde coin başına
+ *             72 864 mumun 1-6'sı ayrışıyor (arşiv farkı), funding birebir aynı.
  */
 
 /**
@@ -112,6 +115,32 @@ export const H_STUDY = {
   analysisCoins: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BCHUSDT", "DOTUSDT", "ETCUSDT", "TRXUSDT", "XLMUSDT"],
   /** Kabul (asıl sınavların ikisinde de): toplam kazanma ≥ %70, ort. işlem > 0, PF > 1. Tutmazsa en iyi kârlı seçenek raporlanır. */
   criteria: { pooledWinRate: 70, pooledAvgRet: 0, pooledPf: 1 } as Criteria,
+};
+
+/**
+ * Uzun geçmiş çalışması (2026-10-01, 1s/4s sınavı tutmadıktan sonra). Veri: bot deposunun research-data dalı
+ * (data.binance.vision, 15 dk mumlar + funding, 2020-01 → 2026-09, 15 coin; import_research_data.py). 2020-01 → 2024-08
+ * bu çalışmaya kadar hiç kullanılmadı (getirisine bakılmadı). Coinlerin listelenme tarihleri farklı (SOL/AVAX/DOT/DOGE
+ * 2020 ortası); işlem, verinin ve göstergelerin hazır olduğu yerden başlar.
+ *   Geliştirme: dev × 15 coin, long_study.py taraması (15 dk / 1 s / 4 s / 1 g; olay × yön × filtre × kâr al/zarar kes).
+ *   Aday (★): dev'in 3 yılının (2020, 2021, 2022) her birinde ≥ 50 işlem, kazanma ≥ %72 ve ort. işlem > 0 (komisyon
+ *            sonrası); coinlerin ≥ 10/15'inde ort. > 0; toplam ≥ 300 işlem. Adaylar arasından en kötü yılının ortalaması
+ *            en yüksek olan TEK kural Pine'a çevrilir, motorla geliştirmede doğrulanır ve sınavlardan önce dondurulur.
+ *   Sınav 1 (hiç görülmemiş): exam1 × 15 coin. Sınav 2: exam2 × 15 coin (bu dönem başka kurallar için görüldü).
+ *   Kabul (iki sınavda da, uygulamanın motoruyla, komisyon %0,05/taraf): toplam kazanma ≥ %70, ort. işlem > 0, PF > 1,
+ *   PF > 1 olan coin ≥ 10/15. Stres komisyonu (%0,065) ve fonlama bilgi olarak raporlanır. Her sınav tek bakış.
+ *   Aday çıkmazsa sınav yapılmaz; sonuç olduğu gibi raporlanır.
+ */
+export const L_STUDY = {
+  dev: { key: "ldev", name: "Uzun geçmiş: geliştirme", from: dayStart("2020-01-01"), to: dayEnd("2022-12-31") } as Window,
+  exam1: { key: "lexam1", name: "Uzun geçmiş: sınav 1", from: dayStart("2023-01-01"), to: dayEnd("2024-08-31") } as Window,
+  exam2: { key: "lexam2", name: "Uzun geçmiş: sınav 2", from: dayStart("2024-09-01"), to: dayEnd("2026-09-29") } as Window,
+  coins: [
+    "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "SOLUSDT", "ADAUSDT", "DOGEUSDT", "LINKUSDT",
+    "LTCUSDT", "DOTUSDT", "AVAXUSDT", "TRXUSDT", "BCHUSDT", "ETCUSDT", "XLMUSDT",
+  ],
+  candidate: { years: [2020, 2021, 2022], yearMinTrades: 50, yearWinRate: 72, posCoins: 10, minTrades: 300 },
+  criteria: { pooledWinRate: 70, pooledAvgRet: 0, pooledPf: 1, pfCoins: 10 } as Criteria,
 };
 
 export const LOOKS = { val: 2, final: 1, reserveRetry: 1 };
