@@ -1,14 +1,14 @@
-# Yapay zekâ yorumcusu (altında haftalık UT Bot; gerçek para yok). Her pazartesi haftalık mum kapandıktan 20 dk sonra
-# tools/ai/haftalik.ts çalışır: UT Bot'un sinyalini bulur, Claude'a son haftanın haberleriyle yorumlatır, kaydı
-# "ai-yorum" dalına (ai/yorumlar.json) yazar; uygulama oradan okur.
-# Claude için depoya ANTHROPIC_API_KEY sırrı eklenmeli (Settings → Secrets and variables → Actions); yoksa yalnız
-# UT Bot kaydı tutulur. Elle: Actions → "Yapay zekâ yorumu" → Run workflow (main). Araştırma dallarında (ccr-*)
-# yalnız deneme: yapay zekâ çağrılmaz, kayıt yazılmaz.
+# Yapay zekâ yorumcusu (altında UT Bot; gerçek para yok). Her gün, günlük mum kapandıktan 20 dk sonra
+# tools/ai/yorumcu.ts çalışır: günlük ve haftalık UT Bot sinyalini bulur; sinyal varsa (haftalıkta her pazartesi)
+# Claude son haberleri okuyup 0–100 al-sat puanı ve açıklama yazar. Kayıt "ai-yorum" dalına (ai/yorumlar.json);
+# uygulama oradan okur. Claude için depoya ANTHROPIC_API_KEY sırrı eklenmeli (Settings → Secrets and variables →
+# Actions); yoksa yalnız UT Bot kaydı tutulur. Elle: Actions → "Yapay zekâ yorumu" → Run workflow (main).
+# Araştırma dallarında (ccr-*) yalnız deneme: yapay zekâ çağrılmaz, kayıt yazılmaz.
 name: Yapay zekâ yorumu
 
 on:
   schedule:
-    - cron: "20 0 * * 1"
+    - cron: "20 0 * * *"
   workflow_dispatch:
   push:
     branches: ["ccr-**"]
@@ -44,17 +44,17 @@ jobs:
             git -C kayit checkout -q --orphan yeni-kayit
             git -C kayit rm -rfq .
           fi
-      - name: Haftalık yorum
+      - name: Yapay zekâ puanı
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: node --import jiti/register tools/ai/haftalik.ts --kayit kayit/ai/yorumlar.json ${{ env.YAZ != 'true' && '--deneme' || '' }}
+        run: node --import jiti/register tools/ai/yorumcu.ts --kayit kayit/ai/yorumlar.json ${{ env.YAZ != 'true' && '--deneme' || '' }}
       - name: Kaydı yaz
         if: ${{ !cancelled() && env.YAZ == 'true' }}
         working-directory: kayit
         run: |
           [ -f README.md ] || printf '%s\n' "# Yapay zekâ yorumu (kayıt dalı)" "" \
             "Bu dalı .github/workflows/ai-yorum.yml her hafta günceller; elle değiştirmeyin." \
-            "ai/yorumlar.json: altında haftalık UT Bot sinyalleri, Claude'un yorumları ve iki kâğıt defter." > README.md
+            "ai/yorumlar.json: altında günlük ve haftalık UT Bot sinyalleri, Claude'un 0-100 puanları ve kâğıt defterler." > README.md
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A

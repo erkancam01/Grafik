@@ -175,38 +175,84 @@ sermayenin %100'ü (uygulamanın Strateji Test Aracı'yla aynı motor; `tools/ba
 - Yapay zekâ ile haber filtresi düşüncesi: geçmişe dönük sınanamaz (model, haberlerin sonucunu biliyor); haftalık
   işlemlerde sinyali haberle onaylayan bir filtrenin düz UT Bot'u geçmesi için %70'in üstünde isabet gerekir (benzetim:
   %50 isabette net ~+%30, %60'ta ~+%44, %70'te ~+%61, %80'de ~+%79; düz UT Bot +%68). Bu yüzden ileriye dönük
-  deneniyor: aşağıdaki yapay zekâ yorumcusu.
+  deneniyor: aşağıdaki yapay zekâ puanı.
 
-## Yapay zekâ yorumcusu (haftalık UT Bot + haberler, kâğıt üzerinde deneme)
+## Yapay zekâ puanı (UT Bot sinyali + haberler, kâğıt üzerinde deneme)
 
-Üst çubuktaki **✦ Yapay zekâ** düğmesi. Her pazartesi 00:20 UTC'de (03:20 TSİ), haftalık mum kapandıktan sonra
-`.github/workflows/ai-yorum.yml` çalışır (`tools/ai/haftalik.ts`):
+UT Bot altında günlük ya da haftalık grafikte sinyal verdiğinde Claude son haberleri okur, o sinyale **0–100 arası
+bir al-sat puanı** verir ve **açıklamasını** yazar:
 
-1. PAXG/USDT haftalık mumlarında **UT Bot Strateji** (varsayılan ayarlar, yalnız long) uygulamanın Pine motoruyla
-   çalışır; geçen haftanın kapanışındaki sinyal bulunur (Al / Sat / yok). İşlemler bu haftanın açılışından.
-2. **Claude** (`claude-opus-5-5`, web araması) son 7 günün altın haberlerini okur (Fed ve faiz, dolar, enflasyon,
-   jeopolitik, merkez bankaları, ETF akışları). **Al haftasında "uygula" ya da "atla"** der; **her hafta** haftanın
-   yönünü tahmin eder (yukarı / aşağı / kararsız); özet, gerekçe, riskler ve dayandığı haberleri yazar (yalnız
-   aramada gerçekten dönen bağlantılar tutulur). Claude ret verirse sunucu tarafında yedek modele geçilir
-   (`fallbacks: "default"`); yanıtı veren model kayda yazılır.
-3. Kayıt `ai-yorum` dalına (`ai/yorumlar.json`) yazılır; uygulama oradan okur.
+- **0** = kesin sat, **50** = nötr, **100** = kesin al.
+- Puan, sinyalin yönünden bağımsız olarak yapay zekânın görüşüdür: Al sinyaline 30 verirse sinyale katılmıyor demektir.
+- Her pazartesi, haftalık grafikte sinyal olmasa da, haftanın puanı verilir.
+
+Nerede görünür:
+
+- **Grafikte:** PAXG/USDT günlük ve haftalık grafikte, UT Bot'un Al/Sat etiketinin yanında "YZ 72" işareti olarak.
+  Grafiğin üst kısmında son puan ve açıklaması bir satırda yazar; o satıra dokununca ayrıntılar açılır.
+- **Üst çubuktaki ✦ Yapay zekâ düğmesi:** haftanın puanı, son günlük sinyal, defterler ve önceki puanlar.
+
+Nasıl çalışır: `.github/workflows/ai-yorum.yml` her gün 00:20 UTC'de (03:20 TSİ), günlük mum kapandıktan sonra
+çalışır (`tools/ai/yorumcu.ts`).
+
+1. PAXG/USDT günlük ve haftalık mumlarında **UT Bot Strateji** (varsayılan ayarlar, yalnız long) uygulamanın Pine
+   motoruyla çalışır ve önceki mumun sinyali bulunur (Al / Sat / yok). İşlemler bu mumun açılışından.
+2. Sinyal varsa (haftalıkta her pazartesi) **Claude** (`claude-opus-5-5`, web araması) son haberleri okur: Fed ve
+   faiz, dolar, enflasyon, jeopolitik, merkez bankaları, ETF akışları. Puanı, açıklamayı, haber özetini, riskleri ve
+   dayandığı haberleri yazar; kaynaklarda yalnız aramada gerçekten dönen bağlantılar tutulur.
+3. Claude ret verirse sunucu tarafında yedek modele geçilir (`fallbacks: "default"`); yanıtı veren model kayda yazılır.
+4. Kayıt `ai-yorum` dalına (`ai/yorumlar.json`) yazılır; uygulama oradan okur.
 
 Puanlama (5 Ekim 2026'dan itibaren; öncesi "deneme öncesi" olarak gösterilir):
 
-- **İki kâğıt defter:** UT Bot olduğu gibi ve yapay zekâ süzgeçli (atladığı işlemler hariç; çıkış ikisinde de UT
-  Bot'un Sat sinyali). Getiriler komisyon (%0,05/taraf) düşülmüş, bileşik. Atlanan işlemlerin kaçının zararlı
-  olduğu ayrıca sayılır.
-- **Yön tahmini isabeti:** kapanan haftalarda, kararsızlar hariç.
-- Karar haftanın açılışından en geç 3 saat sonra verilmediyse sayılmaz (haberlerde ileriyi görmek olur); o hafta
-  yapay zekâ defteri UT Bot'a uyar.
-- Haftalık UT Bot yılda ~3 Al sinyali verir: süzgecin değerini görmek yıllar sürer. Yön tahmini (yılda ~52) daha
-  çabuk fikir verir.
+- **Kâğıt defterler (günlük ve haftalık ayrı):** UT Bot olduğu gibi ve yalnız puanı 50 ve üstü olan Al sinyalleri.
+  Çıkış ikisinde de UT Bot'un Sat sinyali. Getiriler komisyon (%0,05/taraf) düşülmüş, bileşik. Puanı düşük diye
+  atlanan işlemlerin kaçının zararlı olduğu ayrıca sayılır.
+- **Haftanın puanının yön isabeti:** 55 üstü yukarı, 45 altı aşağı sayılır; arası sayılmaz.
+- Puan mumun açılışından en geç 3 saat sonra verilmediyse sayılmaz (haberlerde ileriyi görmek olur).
+- Günlükte yaklaşık 5-6 günde bir sinyal çıkıyor (Al ya da Sat). Haftalıkta yılda birkaç sinyal ve her pazartesi
+  haftanın puanı var.
 
 **Kurulum:** Anthropic API anahtarı gerekir (console.anthropic.com; claude.ai aboneliğinden ayrı, kullandıkça
-ödenir). GitHub'da depo → **Settings → Secrets and variables → Actions → New repository secret**, ad
-`ANTHROPIC_API_KEY`. Anahtar yoksa iş yine çalışır, yalnız UT Bot kaydını tutar. Tahmini maliyet hafta başına
-~$0,2–0,5 (Opus 5.5: milyon token başına $4 girdi / $20 çıktı, arama başına $0,01). Elle çalıştırma: **Actions →
-Yapay zekâ yorumu → Run workflow** (o haftanın yorumu yoksa sorulur; geç verildiği için sayılmaz).
+ödenir).
+
+1. GitHub'da depo → **Settings → Secrets and variables → Actions → New repository secret**.
+2. Ad: `ANTHROPIC_API_KEY`, değer: anahtar.
+
+Anahtar yoksa iş yine çalışır, yalnız UT Bot kaydını tutar. Tahmini maliyet puan başına ~$0,2–0,5, ayda yaklaşık
+$2–4 (Opus 5.5: milyon token başına $4 girdi / $20 çıktı, arama başına $0,01). Elle çalıştırma: **Actions → Yapay
+zekâ yorumu → Run workflow**. O mumun puanı yoksa sorulur; geç verildiği için sayılmaz.
+
+## Yapay zekâ konjonktür süzgeci (geriye dönük)
+
+Soru: "Geçmiş haberleri dün duymuş gibi düşünüp grafiğe bakarak her UT Bot sinyalinde 'mantıklı mı?' diye karar
+verilseydi?" Yöntem (`tools/backtest/konjonktur.ts`, `A_STUDY`; sonuçlardan önce yazılıp gönderildi):
+
+- **Haber takvimi:** 2021-01 → 2026-09 arasında 85 tarihli haber (Fed kararları, enflasyon ve istihdam verileri,
+  savaşlar, krizler, merkez bankası alımları). Her biri altın için olumlu / karışık / olumsuz okunur ve haber gününün
+  ertesi gününden geçerlidir. Altının kendi fiyatı gerekçe olarak kullanılmadı.
+- **Karar:** konjonktür olumluysa yalnız long, olumsuzsa yalnız short (yalnız long biçiminde girilmez). Karışıksa
+  grafiğe bakılır: üst zaman diliminin trendi yönündeki sinyal alınır (1 saat → 4 saatlik EMA50, 4 saat → günlük
+  EMA50, günlük → haftalık EMA20, haftalık → 40 haftalık ortalama). Çıkış hep UT Bot'un ters sinyali.
+
+PAXG/USDT, 2021-01 → 2026-09, UT Bot varsayılan, komisyon %0,05/taraf (`tools/backtest/gold_ai_filter.ts`):
+
+| Grafik | Biçim | UT Bot: işlem / kârlı / net | Yalnız grafik: net | **Yapay zekâ (haber + grafik)**: işlem / kârlı / net |
+|---|---|---|---|---|
+| 1 saat | Al→long, Sat→short | 5216 / %24,1 / −%100 | −%96,2 | 2534 / %25,5 / −%96,3 |
+| 1 saat | yalnız long | 2608 / %25,2 / −%97,5 | −%79,8 | 1325 / %26,9 / −%76,9 |
+| 4 saat | Al→long, Sat→short | 1146 / %34,4 / −%71,8 | −%17,7 | 541 / %40,5 / +%2,7 |
+| 4 saat | yalnız long | 573 / %36,5 / −%20,0 | +%28,3 | 281 / %44,5 / **+%42,1** |
+| 1 gün | Al→long, Sat→short | 187 / %41,2 / +%26,2 | +%72,3 | 91 / %48,4 / **+%113,1** |
+| 1 gün | yalnız long | 93 / %41,9 / +%69,2 | +%77,3 | 44 / %54,5 / **+%136,8** |
+| 1 hafta | Al→long, Sat→short | 32 / %40,6 / +%15,8 | +%47,7 | 22 / %45,5 / +%37,1 |
+| 1 hafta | yalnız long | 16 / %62,5 / +%68,5 | +%70,2 | 12 / **%75,0** / +%82,5 |
+
+- Süzgeç her zaman diliminde iyileştirdi ve aynı sayıda işlemi rastgele atlayan süzgeçlerin %85-100'ünden iyi
+  çıktı. 1 saatlikte UT Bot'u kurtarmıyor (komisyon ve gürültü).
+- **Dürüst uyarı:** takvim, sonradan ne olduğunu bilen biri tarafından yazıldı. "Yalnız grafik" sütunu geçmişi
+  bilmeyi gerektirmeyen kurala dayalı kısımdır. Haberin bunun üstüne eklediği kazanç gerçek olabilir, ama şişmiş de
+  olabilir. Temiz ölçü ileriye dönük denemedir (yukarıdaki yapay zekâ puanı).
 
 ## Pine Script desteği
 
@@ -279,13 +325,14 @@ python3 tools/backtest/import_gold_data.py          # data/altin → .cache/bars
 npm run bt:final -- --study-g --coins SPOT-PAXGUSDT,XAUUSDT,PAXGUSDT   # Rejim Strateji altında
 python3 tools/backtest/regime_study.py --coins SPOT-PAXGUSDT --tag altin --min-trades 40
 node --import jiti/register tools/backtest/gold_utbot.ts  # altında UT Bot: 1 hafta / 1 gün / 4 saat / 1 saat
-node --import jiti/register tools/ai/haftalik.ts --kayit /tmp/yorumlar.json --deneme  # yapay zekâ yorumcusu, Claude'suz deneme
+node --import jiti/register tools/ai/yorumcu.ts --kayit /tmp/yorumlar.json --deneme  # yapay zekâ puanı, Claude'suz deneme
+node --import jiti/register tools/backtest/gold_ai_filter.ts  # yapay zekâ konjonktür süzgeci, geriye dönük (A_STUDY)
 BT_REAL=1 npx playwright test e2e/real.spec.ts      # uygulamada gerçek altın verisiyle aynı sonuç + ekran görüntüsü
 npm run bt:sweep -- tools/backtest/specs/r1_rejim.ts  # Rejim Strateji, motorla 2021-2026 (laboratuvarla eşleşme)
 ```
 
 Yapı: `src/pine/` (lexer → parser → derleyici → yürütme, `strategy.ts` emir/işlem motoru, `builtins/`, `library/`),
-`src/data/` (Binance, demo), `src/ai/` + `tools/ai/` (yapay zekâ yorumcusu),
+`src/data/` (Binance, demo), `src/ai/` + `tools/ai/` (yapay zekâ puanı),
 `src/indicators/` (hesap akışı), `src/worker/` (yorumlayıcı ayrı iş parçacığında), `src/chart/` (lightweight-charts),
 `src/ui/`.
 
