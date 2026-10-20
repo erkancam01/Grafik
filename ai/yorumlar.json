@@ -2,7 +2,7 @@
  "surum": 2,
  "sembol": "PAXGUSDT",
  "baslangic": 1791158400000,
- "guncelleme": 1792385620815,
+ "guncelleme": 1792472426104,
  "olaylar": [
   {
    "tf": "1w",
@@ -100,7 +100,7 @@
    "iz": 4130.709540180559,
    "ai": null,
    "aiHata": "ANTHROPIC_API_KEY tanımlı değil (GitHub → Settings → Secrets and variables → Actions)",
-   "kapanis": null
+   "kapanis": 4133.66
   }
  ],
  "islemler": {
@@ -117,8 +117,8 @@
     "giris": 1792368000000,
     "girisFiyat": 4178.9,
     "cikis": null,
-    "cikisFiyat": 4178.99,
-    "getiri": -0.04784632319509571,
+    "cikisFiyat": 4143.82,
+    "getiri": -0.8894553590657812,
     "acik": true
    }
   ],
