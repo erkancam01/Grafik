@@ -2,7 +2,7 @@
  "surum": 2,
  "sembol": "PAXGUSDT",
  "baslangic": 1791158400000,
- "guncelleme": 1794725303994,
+ "guncelleme": 1794811609465,
  "olaylar": [
   {
    "tf": "1w",
@@ -198,7 +198,7 @@
    "iz": 4103.429151715425,
    "ai": null,
    "aiHata": "ANTHROPIC_API_KEY tanımlı değil (GitHub → Settings → Secrets and variables → Actions)",
-   "kapanis": null
+   "kapanis": 3887.59
   },
   {
    "tf": "1d",
@@ -213,6 +213,34 @@
    "ai": null,
    "aiHata": "ANTHROPIC_API_KEY tanımlı değil (GitHub → Settings → Secrets and variables → Actions)",
    "kapanis": 3974.9
+  },
+  {
+   "tf": "1w",
+   "zaman": 1794787200000,
+   "sinyal": "yok",
+   "karar": 1794811609465,
+   "zamaninda": false,
+   "pozisyon": false,
+   "acilis": 3887.59,
+   "oncekiKapanis": 3887.59,
+   "iz": 4101.8440128894945,
+   "ai": null,
+   "aiHata": "ANTHROPIC_API_KEY tanımlı değil (GitHub → Settings → Secrets and variables → Actions)",
+   "kapanis": null
+  },
+  {
+   "tf": "1d",
+   "zaman": 1794787200000,
+   "sinyal": "al",
+   "karar": 1794811609465,
+   "zamaninda": false,
+   "pozisyon": true,
+   "acilis": 3887.59,
+   "oncekiKapanis": 3887.59,
+   "iz": 3806.386387285712,
+   "ai": null,
+   "aiHata": "ANTHROPIC_API_KEY tanımlı değil (GitHub → Settings → Secrets and variables → Actions)",
+   "kapanis": null
   }
  ],
  "islemler": {
@@ -248,6 +276,14 @@
     "cikisFiyat": 4033.95,
     "getiri": -0.7804258174118598,
     "acik": false
+   },
+   {
+    "giris": 1794787200000,
+    "girisFiyat": 3887.59,
+    "cikis": null,
+    "cikisFiyat": 3831.03,
+    "getiri": -1.5048859319012533,
+    "acik": true
    }
   ],
   "1w": []
