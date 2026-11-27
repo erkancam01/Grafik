@@ -2,7 +2,7 @@
  "surum": 2,
  "sembol": "PAXGUSDT",
  "baslangic": 1791158400000,
- "guncelleme": 1795682176644,
+ "guncelleme": 1795769226735,
  "olaylar": [
   {
    "tf": "1w",
@@ -278,7 +278,7 @@
     "girisFiyat": 4187.18,
     "cikis": 1792022400000,
     "cikisFiyat": 4123,
-    "getiri": -1.632007460868658,
+    "getiri": -1.6320074608686583,
     "acik": false
    },
    {
@@ -294,7 +294,7 @@
     "girisFiyat": 4069,
     "cikis": 1793318400000,
     "cikisFiyat": 4014.38,
-    "getiri": -1.4416733841238607,
+    "getiri": -1.4416733841238605,
     "acik": false
    },
    {
@@ -302,7 +302,7 @@
     "girisFiyat": 4061.6,
     "cikis": 1794355200000,
     "cikisFiyat": 4033.95,
-    "getiri": -0.7804258174118598,
+    "getiri": -0.7804258174118596,
     "acik": false
    },
    {
